@@ -1,62 +1,57 @@
 package net.njw.beyondthecity.client.worldgen;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.njw.beyondthecity.BeyondtheCity;
 
-@EventBusSubscriber(
-        modid = BeyondtheCity.MODID,
-        value = Dist.CLIENT
-)
+@EventBusSubscriber(modid = BeyondtheCity.MODID, value = Dist.CLIENT)
 public final class WorldCreationSeedHandler {
-
-    private static boolean processed;
+    private static final int ATTEMPTS_PER_TICK = 32;
+    private static CreateWorldScreen pendingScreen;
+    private static SeedSearchService.SearchTask pendingTask;
 
     private WorldCreationSeedHandler() {
     }
 
     @SubscribeEvent
-    public static void onScreenInit(
-            ScreenEvent.Init.Post event
-    ) {
-        if (!(event.getScreen()
-                instanceof CreateWorldScreen screen)) {
+    public static void onScreenInit(ScreenEvent.Init.Post event) {
+        if (!(event.getScreen() instanceof CreateWorldScreen screen)) return;
+        if (!screen.getUiState().getSeed().isBlank()) return;
+        pendingScreen = screen;
+        pendingTask = SeedSearchService.createTask(screen.getUiState().getSettings());
+    }
+
+    @SubscribeEvent
+    public static void onClientTick(ClientTickEvent.Post event) {
+        if (pendingScreen == null || pendingTask == null) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen != pendingScreen) {
+            clearPending();
             return;
         }
-
-        if (processed) {
+        if (!pendingScreen.getUiState().getSeed().isBlank()) {
+            clearPending();
             return;
         }
-
-        /*
-         * 사용자가 이미 직접 seed를 입력했다면
-         * 덮어쓰지 않는다.
-         */
-        if (!screen.getUiState()
-                .getSeed()
-                .isBlank()) {
-            return;
+        pendingTask.advance(ATTEMPTS_PER_TICK);
+        if (!pendingTask.isFinished()) return;
+        if (pendingTask.hasResult()) {
+            long seed = pendingTask.result();
+            pendingScreen.getUiState().setSeed(Long.toString(seed));
+            BeyondtheCity.LOGGER.info("Selected seed {} for After the End after {} attempts", seed, pendingTask.attempts());
+        } else {
+            BeyondtheCity.LOGGER.warn("Could not find a suitable seed within {} attempts.", SeedSearchService.MAX_ATTEMPTS);
         }
+        clearPending();
+    }
 
-        processed = true;
-
-        long seed =
-                SeedSearchService.findSuitableSeed(
-                        screen.getUiState()
-                                .getSettings()
-                );
-
-        screen.getUiState()
-                .setSeed(
-                        Long.toString(seed)
-                );
-
-        BeyondtheCity.LOGGER.info(
-                "Selected seed {} for Beyond the City",
-                seed
-        );
+    private static void clearPending() {
+        pendingScreen = null;
+        pendingTask = null;
     }
 }
