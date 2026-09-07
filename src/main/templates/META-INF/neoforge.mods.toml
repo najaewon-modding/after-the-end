@@ -40,7 +40,7 @@ authors="najaewon"
 
 # The description text for the mod (multi line!) (#mandatory)
 description='''
-Expand your world by unlocking new cities and exploring beyond the boundaries.
+A post-End progression mod that expands Minecraft with unlockable cities, specialized villagers, player profiles, and private building spaces.
 '''
 
 # The [[mixins]] block allows you to declare your mixin config to FML so that it gets loaded.
@@ -52,7 +52,7 @@ Expand your world by unlocking new cities and exploring beyond the boundaries.
 #[[accessTransformers]]
 #file="META-INF/accesstransformer.cfg"
 
-# The coremods config file path is not configurable and is always loaded from META-INF/coremods.json
+# The coremods config file path is not configurable and always loaded from META-INF/coremods.json
 
 # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.
 [[dependencies.${mod_id}]] #optional

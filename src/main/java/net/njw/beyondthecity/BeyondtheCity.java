@@ -21,7 +21,7 @@ import org.slf4j.Logger;
 @Mod(BeyondtheCity.MODID)
 public class BeyondtheCity {
 
-    public static final String MODID = "njw_beyond_the_city";
+    public static final String MODID = "njw_after_the_end";
 
     public static final Logger LOGGER = LogUtils.getLogger();
 
