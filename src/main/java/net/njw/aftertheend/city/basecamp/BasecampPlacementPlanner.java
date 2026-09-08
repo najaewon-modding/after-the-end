@@ -16,10 +16,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 final class BasecampPlacementPlanner {
@@ -50,11 +52,13 @@ final class BasecampPlacementPlanner {
         List<ChunkSeed> sampledChunks = farthestPointSampleChunks(region, seed);
         SearchBounds smallBounds = searchBounds(region, SMALL);
         SearchBounds largeBounds = searchBounds(region, LARGE);
+        Map<Long, SurfaceSample> surfaceCache = new HashMap<>();
+        Set<Long> missingSurfaceSamples = new HashSet<>();
 
         List<ChunkEvaluation> evaluated = new ArrayList<>(sampledChunks.size());
         for (ChunkSeed chunk : sampledChunks) {
-            Site small = evaluateSiteInChunk(level, chunk, SMALL, smallBounds, false);
-            Site large = hasLarge ? evaluateSiteInChunk(level, chunk, LARGE, largeBounds, false) : null;
+            Site small = evaluateSiteInChunk(level, chunk, SMALL, smallBounds, false, surfaceCache, missingSurfaceSamples);
+            Site large = hasLarge ? evaluateSiteInChunk(level, chunk, LARGE, largeBounds, false, surfaceCache, missingSurfaceSamples) : null;
             evaluated.add(new ChunkEvaluation(chunk, small, large));
         }
 
@@ -75,7 +79,7 @@ final class BasecampPlacementPlanner {
             boolean large = position == selection.largePosition();
             TemplateSize size = large ? LARGE : SMALL;
             SearchBounds bounds = large ? largeBounds : smallBounds;
-            Site refined = findBestSiteInChunk(level, candidate.chunk(), size, bounds, true);
+            Site refined = findBestSiteInChunk(level, candidate.chunk(), size, bounds, true, surfaceCache, missingSurfaceSamples);
             if (refined == null) refined = large ? candidate.large() : candidate.small();
             if (refined == null) refined = emergencySiteInChunk(level, candidate.chunk(), size, bounds);
             chosen.add(new ChosenSite(candidate, refined, large));
@@ -175,9 +179,11 @@ final class BasecampPlacementPlanner {
             ChunkSeed chunk,
             TemplateSize size,
             SearchBounds bounds,
-            boolean exhaustive
+            boolean exhaustive,
+            Map<Long, SurfaceSample> surfaceCache,
+            Set<Long> missingSurfaceSamples
     ) {
-        Site site = findBestSiteInChunk(level, chunk, size, bounds, exhaustive);
+        Site site = findBestSiteInChunk(level, chunk, size, bounds, exhaustive, surfaceCache, missingSurfaceSamples);
         if (site != null) return site;
         AfterTheEnd.LOGGER.debug(
                 "Basecamp candidate chunk ({}, {}) size={} could not be terrain-scored normally; assigning fallback score instead of removing candidate",
@@ -191,7 +197,9 @@ final class BasecampPlacementPlanner {
             ChunkSeed chunk,
             TemplateSize size,
             SearchBounds bounds,
-            boolean exhaustive
+            boolean exhaustive,
+            Map<Long, SurfaceSample> surfaceCache,
+            Set<Long> missingSurfaceSamples
     ) {
         int chunkMinX = chunk.chunkX() << 4;
         int chunkMinZ = chunk.chunkZ() << 4;
@@ -208,7 +216,7 @@ final class BasecampPlacementPlanner {
             Site best = null;
             for (int x : xs) {
                 for (int z : zs) {
-                    TerrainAssessment terrain = assessTerrain(level, x, z, size, !exhaustive);
+                    TerrainAssessment terrain = assessTerrain(level, x, z, size, !exhaustive, surfaceCache, missingSurfaceSamples);
                     if (terrain == null) continue;
                     double score = terrain.score() + edgePenalty(bounds, x, z);
                     if (best == null || score < best.score()) best = new Site(x, z, score, terrain);
@@ -429,7 +437,10 @@ final class BasecampPlacementPlanner {
         return 0.80 * shorterSide / Math.sqrt(Math.max(1, count));
     }
 
-    private static TerrainAssessment assessTerrain(ServerLevel level, int centerX, int centerZ, TemplateSize size, boolean sampled) {
+    private static TerrainAssessment assessTerrain(
+            ServerLevel level, int centerX, int centerZ, TemplateSize size, boolean sampled,
+            Map<Long, SurfaceSample> surfaceCache, Set<Long> missingSurfaceSamples
+    ) {
         int half = size.width() / 2;
         int originX = centerX - half;
         int originZ = centerZ - half;
@@ -440,7 +451,7 @@ final class BasecampPlacementPlanner {
             for (int dx : offsets) {
                 for (int dz : offsets) {
                     if (!isCoreFootprintCell(size, dx, dz)) continue;
-                    SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz);
+                    SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz, surfaceCache, missingSurfaceSamples);
                     if (sample == null) return null;
                     samples.add(sample);
                 }
@@ -449,7 +460,7 @@ final class BasecampPlacementPlanner {
             for (int dx = 0; dx < size.width(); dx++) {
                 for (int dz = 0; dz < size.width(); dz++) {
                     if (!isCoreFootprintCell(size, dx, dz)) continue;
-                    SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz);
+                    SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz, surfaceCache, missingSurfaceSamples);
                     if (sample == null) return null;
                     samples.add(sample);
                 }
@@ -536,7 +547,21 @@ final class BasecampPlacementPlanner {
         return EFFECTIVE_REJECT_PENALTY + excess * 2_000_000.0 + excess * excess * 5_000_000.0;
     }
 
-    private static SurfaceSample findSurfaceSample(ServerLevel level, int x, int z) {
+    private static SurfaceSample findSurfaceSample(
+            ServerLevel level, int x, int z, Map<Long, SurfaceSample> surfaceCache, Set<Long> missingSurfaceSamples
+    ) {
+        long key = coordinateKey(x, z);
+        SurfaceSample cached = surfaceCache.get(key);
+        if (cached != null) return cached;
+        if (missingSurfaceSamples.contains(key)) return null;
+
+        SurfaceSample sample = readSurfaceSample(level, x, z);
+        if (sample == null) missingSurfaceSamples.add(key);
+        else surfaceCache.put(key, sample);
+        return sample;
+    }
+
+    private static SurfaceSample readSurfaceSample(ServerLevel level, int x, int z) {
         int top = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1;
         if (top < level.getMinY()) return null;
 
@@ -618,6 +643,10 @@ final class BasecampPlacementPlanner {
     }
 
     private static long chunkKey(int x, int z) {
+        return coordinateKey(x, z);
+    }
+
+    private static long coordinateKey(int x, int z) {
         return ((long) x << 32) ^ (z & 0xffffffffL);
     }
 
