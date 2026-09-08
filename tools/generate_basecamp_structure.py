@@ -51,8 +51,8 @@ def aged_surface(x, y, z, default, cfg):
     if level == 0: return default
     h = hash3(x, y, z)
     if level >= 2:
-        if h % 17 in (0, 1): return cfg["moss"]
-        if h % 5 == 0 or h % 11 == 0: return cfg["aged"]
+        if h % 19 in (0, 1): return cfg["moss"]
+        if h % 4 == 0 or h % 7 == 0: return cfg["aged"]
     return default
 
 def aged_stairs(x, y, z, cfg):
@@ -236,16 +236,59 @@ def write_structure(name):
 
 def add_mossy_decay(cfg):
     if cfg["aged_level"] < 2: return
-    replacements = [(4, 4, 3), (22, 4, 23), (3, 4, 22)]
-    for pos in replacements:
-        if pos in blocks: put(*pos, "minecraft:cobweb")
-    overlays = [
-        (5, 3, 5), (21, 3, 5), (5, 3, 21), (21, 3, 21),
-        (5, 4, 5), (21, 4, 5), (5, 4, 21), (21, 4, 21),
-        (21, 2, 15), (6, 2, 8), (8, 2, 21), (18, 2, 4),
-        (3, 2, 10), (23, 2, 17),
+
+    # Break the otherwise pristine circular silhouette. These gaps are
+    # deliberately clustered and asymmetric so the altar reads as a
+    # neglected ruin rather than a clean altar with moss painted on it.
+    missing = [
+        # Inner stair ring and glazed outer rune ring.
+        (13, 1, 6), (14, 1, 6), (20, 1, 12), (20, 1, 13),
+        (18, 1, 18), (8, 1, 18),
+        (13, 2, 7), (14, 2, 7), (19, 2, 12), (19, 2, 13),
+        (17, 2, 18), (8, 2, 17),
+        # Outer platform rim and two worn approach slabs.
+        (13, 1, 3), (14, 1, 3), (22, 1, 17), (5, 1, 7), (3, 1, 14),
+        (14, 1, 1), (12, 1, 25),
+        # Broken obelisk details: one noticeably shortened pillar and
+        # smaller losses on the other corners.
+        (4, 7, 4), (4, 6, 4), (5, 4, 4),
+        (22, 7, 22), (22, 4, 21), (21, 2, 4), (4, 4, 21),
     ]
-    for pos in overlays:
+    for pos in missing:
+        blocks.pop(pos, None)
+
+    # Expose cracked masonry around the missing sections, including a
+    # few blocks that interrupt the glazed ring itself.
+    cracked = [
+        (12, 2, 7), (15, 2, 7), (19, 2, 14), (16, 2, 18), (8, 2, 16),
+        (12, 1, 6), (15, 1, 6), (20, 1, 14), (17, 1, 18), (9, 1, 18),
+        (12, 1, 4), (15, 1, 4), (21, 1, 17), (6, 1, 7), (4, 1, 15),
+        (3, 1, 4), (4, 2, 3), (5, 3, 4),
+        (21, 1, 22), (22, 2, 21), (21, 3, 22),
+        (3, 2, 22), (4, 3, 21), (22, 2, 5),
+    ]
+    for pos in cracked:
+        if pos in blocks: put(*pos, cfg["aged"])
+
+    # Moss is kept in uneven clusters instead of being uniformly
+    # distributed, suggesting long-term moisture and abandonment.
+    mossy = [
+        (10, 1, 5), (9, 1, 6), (7, 1, 9), (6, 1, 10),
+        (5, 1, 18), (6, 1, 19), (8, 1, 21),
+        (3, 1, 5), (3, 2, 4), (4, 3, 3),
+        (21, 1, 21), (22, 1, 20), (23, 2, 22),
+    ]
+    for pos in mossy:
+        if pos in blocks: put(*pos, cfg["moss"])
+
+    # Cobwebs now gather around collapsed edges and pillar cavities,
+    # while several damaged locations remain genuinely empty.
+    webs = [
+        (13, 3, 7), (19, 3, 13), (17, 3, 18), (8, 3, 17),
+        (4, 6, 4), (5, 4, 5), (21, 4, 5),
+        (5, 4, 21), (21, 4, 21), (22, 7, 21),
+    ]
+    for pos in webs:
         if pos not in blocks: put(*pos, "minecraft:cobweb")
 
 def generate(name, cfg):
