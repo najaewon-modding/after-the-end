@@ -1,0 +1,114 @@
+name: Finalize Basecamp Variants
+
+on:
+  push:
+    paths:
+      - ".github/workflows/finalize-basecamp-variants.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Expand generators to final variant matrix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          large_path = Path("tools/generate_basecamp_structure.py")
+          small_path = Path("tools/generate_small_basecamp_structure.py")
+
+          large = large_path.read_text()
+          large_variants = '''VARIANTS = {
+              "basecamp_01": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
+              "basecamp_01_ruined": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "aged_level": 2},
+              "basecamp_mossy_clean": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "aged_level": 0},
+              "basecamp_mossy": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "aged_level": 2},
+              "basecamp_cyan": {**STONE, "style": "classic_cyan", "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "aged_level": 0},
+              "basecamp_cyan_ruined": {**STONE, "style": "classic_cyan", "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "aged_level": 2},
+              "basecamp_green": {**STONE, "style": "classic_green", "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "aged_level": 0},
+              "basecamp_green_ruined": {**STONE, "style": "classic_green", "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "aged_level": 2},
+              "basecamp_white": {**STONE, "style": "classic_white", "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "aged_level": 0},
+              "basecamp_white_ruined": {**STONE, "style": "classic_white", "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "aged_level": 2},
+          }'''
+          large, count = re.subn(r'VARIANTS = \{.*?\n\}\n\ndef put', large_variants + '\n\ndef put', large, count=1, flags=re.S)
+          assert count == 1, "large VARIANTS block not replaced"
+          large = large.replace("def add_mossy_decay(cfg):", "def add_ruin_decay(cfg):")
+          large = large.replace("add_mossy_decay(cfg)", "add_ruin_decay(cfg)")
+          large_path.write_text(large)
+
+          small = small_path.read_text()
+          small_variants = '''VARIANTS = {
+              "basecamp_small_01": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "decayed": False},
+              "basecamp_small_01_ruined": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "decayed": True},
+              "basecamp_small_mossy_clean": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": False},
+              "basecamp_small_mossy": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": True},
+              "basecamp_small_cyan": {**STONE, "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "decayed": False},
+              "basecamp_small_cyan_ruined": {**STONE, "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "decayed": True},
+              "basecamp_small_green": {**STONE, "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": False},
+              "basecamp_small_green_ruined": {**STONE, "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": True},
+              "basecamp_small_white": {**STONE, "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "decayed": False},
+              "basecamp_small_white_ruined": {**STONE, "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "decayed": True},
+          }'''
+          small, count = re.subn(r'VARIANTS = \{.*?\n\}\n\ndef put', small_variants + '\n\ndef put', small, count=1, flags=re.S)
+          assert count == 1, "small VARIANTS block not replaced"
+          small = small.replace("def add_mossy_decay(cfg):", "def add_ruin_decay(cfg):")
+          small = small.replace("add_mossy_decay(cfg)", "add_ruin_decay(cfg)")
+          small_path.write_text(small)
+          PY
+
+      - name: Generate all twenty structures
+        run: |
+          python tools/generate_basecamp_structure.py
+          python tools/generate_small_basecamp_structure.py
+
+      - name: Validate final matrix
+        run: |
+          python - <<'PY'
+          import gzip
+          import os
+          import struct
+
+          root = "src/main/resources/data/njw_after_the_end/structure/basecamp"
+          large_clean = ["basecamp_01", "basecamp_mossy_clean", "basecamp_cyan", "basecamp_green", "basecamp_white"]
+          large_ruined = ["basecamp_01_ruined", "basecamp_mossy", "basecamp_cyan_ruined", "basecamp_green_ruined", "basecamp_white_ruined"]
+          small_clean = ["basecamp_small_01", "basecamp_small_mossy_clean", "basecamp_small_cyan", "basecamp_small_green", "basecamp_small_white"]
+          small_ruined = ["basecamp_small_01_ruined", "basecamp_small_mossy", "basecamp_small_cyan_ruined", "basecamp_small_green_ruined", "basecamp_small_white_ruined"]
+          expected = large_clean + large_ruined + small_clean + small_ruined
+          actual = sorted(f[:-4] for f in os.listdir(root) if f.startswith("basecamp") and f.endswith(".nbt"))
+          assert sorted(expected) == actual, (len(actual), actual)
+
+          large_size = b"\x09\x00\x04size\x03" + struct.pack(">i", 3) + struct.pack(">iii", 27, 10, 27)
+          small_size = b"\x09\x00\x04size\x03" + struct.pack(">i", 3) + struct.pack(">iii", 11, 7, 11)
+          ruined_tokens = (b"cracked_stone_bricks", b"mossy_stone_bricks", b"cobweb")
+          for name in expected:
+              with gzip.open(os.path.join(root, name + ".nbt"), "rb") as f:
+                  raw = f.read()
+              assert raw[:3] == b"\x0a\x00\x00", name
+              assert (small_size if name.startswith("basecamp_small_") else large_size) in raw, name
+              assert b"palette" in raw and b"blocks" in raw and b"entities" in raw, name
+              is_ruined = name in large_ruined or name in small_ruined
+              if is_ruined:
+                  for token in ruined_tokens: assert token in raw, (name, token)
+              else:
+                  assert b"cobweb" not in raw, name
+          print("Validated 20 final Basecamp templates: 10 large + 10 small")
+          PY
+
+      - name: Commit final variants
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/generate_basecamp_structure.py tools/generate_small_basecamp_structure.py
+          git add src/main/resources/data/njw_after_the_end/structure/basecamp/basecamp*.nbt
+          git rm .github/workflows/finalize-basecamp-variants.yml
+          git commit -m "feat: finalize twenty basecamp variants"
+          git push
