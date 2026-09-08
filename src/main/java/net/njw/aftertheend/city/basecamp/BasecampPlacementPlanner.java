@@ -59,13 +59,20 @@ final class BasecampPlacementPlanner {
         }
 
         List<ChunkEvaluation> usable = evaluated.stream().filter(candidate -> candidate.small() != null).toList();
-        if (usable.size() < count) {
+        boolean missingLargeCandidate = hasLarge && usable.stream().noneMatch(candidate -> candidate.large() != null);
+        if (usable.size() < count || missingLargeCandidate) {
             AfterTheEnd.LOGGER.warn(
-                    "Basecamp planner {} found only {} sampled usable chunks for {} structures; augmenting with emergency candidates",
-                    cityId, usable.size(), count
+                    "Basecamp planner {} found only {} sampled usable chunks for {} structures (largeCandidate={}); augmenting with guaranteed emergency candidates",
+                    cityId, usable.size(), count, !missingLargeCandidate
             );
             evaluated = augmentEmergencyCandidates(level, region, evaluated, hasLarge, count);
             usable = evaluated.stream().filter(candidate -> candidate.small() != null).toList();
+        }
+        if (usable.size() < count) {
+            throw new IllegalStateException(
+                    "Basecamp planner could not obtain enough distinct city chunks even after emergency augmentation: "
+                            + usable.size() + " < " + count
+            );
         }
 
         double targetDistance = preferredDistance(region, count);
@@ -193,18 +200,27 @@ final class BasecampPlacementPlanner {
         int maxZ = Math.min(chunkMinZ + 15, bounds.maxCenterZ());
         if (minX > maxX || minZ > maxZ) return null;
 
-        int[] xs = exhaustive ? range(minX, maxX) : sampledAxis(minX, maxX);
-        int[] zs = exhaustive ? range(minZ, maxZ) : sampledAxis(minZ, maxZ);
-        Site best = null;
-        for (int x : xs) {
-            for (int z : zs) {
-                TerrainAssessment terrain = assessTerrain(level, x, z, size, !exhaustive);
-                if (terrain == null) continue;
-                double score = terrain.score() + edgePenalty(bounds, x, z);
-                if (best == null || score < best.score()) best = new Site(x, z, score, terrain);
+        try {
+            level.getChunk(chunk.chunkX(), chunk.chunkZ());
+            int[] xs = exhaustive ? range(minX, maxX) : sampledAxis(minX, maxX);
+            int[] zs = exhaustive ? range(minZ, maxZ) : sampledAxis(minZ, maxZ);
+            Site best = null;
+            for (int x : xs) {
+                for (int z : zs) {
+                    TerrainAssessment terrain = assessTerrain(level, x, z, size, !exhaustive);
+                    if (terrain == null) continue;
+                    double score = terrain.score() + edgePenalty(bounds, x, z);
+                    if (best == null || score < best.score()) best = new Site(x, z, score, terrain);
+                }
             }
+            return best;
+        } catch (RuntimeException exception) {
+            AfterTheEnd.LOGGER.warn(
+                    "Basecamp terrain evaluation failed for sampled chunk ({}, {}), size={}; using another candidate",
+                    chunk.chunkX(), chunk.chunkZ(), size.width(), exception
+            );
+            return null;
         }
-        return best;
     }
 
     private static Site emergencySiteInChunk(ServerLevel level, ChunkSeed chunk, TemplateSize size, SearchBounds bounds) {
@@ -212,8 +228,17 @@ final class BasecampPlacementPlanner {
         int chunkMinZ = chunk.chunkZ() << 4;
         int x = clamp(chunkMinX + 8, bounds.minCenterX(), bounds.maxCenterX());
         int z = clamp(chunkMinZ + 8, bounds.minCenterZ(), bounds.maxCenterZ());
-        level.getChunk(x >> 4, z >> 4);
-        int target = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+        int target;
+        try {
+            level.getChunk(x >> 4, z >> 4);
+            target = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+        } catch (RuntimeException exception) {
+            target = level.getSeaLevel();
+            AfterTheEnd.LOGGER.warn(
+                    "Basecamp emergency height lookup failed at ({}, {}); using sea-level fallback Y={}",
+                    x, z, target, exception
+            );
+        }
         target = Math.max(level.getMinY() + 1, Math.min(level.getMaxY(), target));
         TerrainAssessment terrain = new TerrainAssessment(target, EFFECTIVE_REJECT_PENALTY * 10.0, 0.0, 1.0, 0.0, 0.0);
         return new Site(x, z, terrain.score(), terrain);
@@ -238,8 +263,9 @@ final class BasecampPlacementPlanner {
                 if (!seen.add(chunkKey(x, z))) continue;
                 ChunkSeed chunk = new ChunkSeed(sampleIndex++, x, z);
                 Site small = findBestSiteInChunk(level, chunk, SMALL, smallBounds, false);
-                if (small == null) continue;
+                if (small == null) small = emergencySiteInChunk(level, chunk, SMALL, smallBounds);
                 Site large = hasLarge ? findBestSiteInChunk(level, chunk, LARGE, largeBounds, false) : null;
+                if (hasLarge && large == null) large = emergencySiteInChunk(level, chunk, LARGE, largeBounds);
                 result.add(new ChunkEvaluation(chunk, small, large));
                 usable++;
             }
@@ -275,6 +301,9 @@ final class BasecampPlacementPlanner {
     }
 
     private static int[] bestTerrainInitialization(List<ChunkEvaluation> candidates, int count, boolean hasLarge) {
+        if (candidates.size() < count) {
+            throw new IllegalStateException("Basecamp optimizer requires at least " + count + " candidates, got " + candidates.size());
+        }
         Integer[] order = new Integer[candidates.size()];
         for (int i = 0; i < order.length; i++) order[i] = i;
         Arrays.sort(order, Comparator.comparingDouble(i -> candidates.get(i).small().score()));
@@ -297,6 +326,9 @@ final class BasecampPlacementPlanner {
     }
 
     private static int[] randomInitialization(int candidateCount, int count, RandomSource random) {
+        if (candidateCount < count) {
+            throw new IllegalStateException("Basecamp optimizer requires at least " + count + " candidates, got " + candidateCount);
+        }
         int[] indices = new int[candidateCount];
         for (int i = 0; i < candidateCount; i++) indices[i] = i;
         for (int i = 0; i < count; i++) {
