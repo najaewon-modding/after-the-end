@@ -25,8 +25,8 @@ import java.util.Map;
 import java.util.Set;
 
 final class BasecampPlacementPlanner {
-    private static final int FPS_CANDIDATE_COUNT = 256;
-    private static final int COARSE_AXIS_SAMPLES = 5;
+    private static final int FPS_CANDIDATE_COUNT = 128;
+    private static final int COARSE_AXIS_SAMPLES = 3;
     private static final int OPTIMIZER_RESTARTS = 16;
     private static final int OPTIMIZER_MAX_PASSES = 12;
     private static final int CITY_EDGE_MARGIN = 8;
@@ -62,7 +62,7 @@ final class BasecampPlacementPlanner {
         }
 
         // Candidate chunks are selected entirely from Small terrain scores and spacing. Large is evaluated only
-        // after the final N chunks are fixed, so the 256 FPS candidates never pay the Large evaluation cost.
+        // after the final N chunks are fixed, so the FPS candidate pool never pays the Large evaluation cost.
         double targetDistance = preferredDistance(region, count);
         SelectionResult selection = optimizeJointSelection(
                 evaluated,
