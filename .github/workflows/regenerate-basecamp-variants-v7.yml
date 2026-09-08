@@ -1,0 +1,118 @@
+name: Regenerate Basecamp Variants V7
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/regenerate-basecamp-variants-v7.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore yellow perimeter rune points
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('tools/generate_basecamp_structure.py')
+          text = path.read_text(encoding='utf-8')
+
+          point_colors = {
+              'basecamp_01': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_mossy': 'minecraft:lime_glazed_terracotta',
+              'basecamp_red': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_orange': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_yellow': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_lime': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_green': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_cyan': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_light_blue': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_blue': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_purple': 'minecraft:yellow_glazed_terracotta',
+              'basecamp_white': 'minecraft:yellow_glazed_terracotta',
+          }
+
+          for name, color in point_colors.items():
+              pattern = rf'("{name}": \{{[^\n]*?"rune": "[^"]+")([^\n]*?"aged_level")'
+              replacement = rf'\1, "point": "{color}"\2'
+              text, count = re.subn(pattern, replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f'Could not add point color for {name}')
+
+          old = 'put(CENTER + ix, 2, CENTER + iz, cfg["rune"], {"facing": radial_facing(ix, iz)})'
+          new = 'put(CENTER + ix, 2, CENTER + iz, cfg["point"], {"facing": radial_facing(ix, iz)})'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one perimeter rune placement, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Generate Basecamp variants
+        run: python tools/generate_basecamp_structure.py
+
+      - name: Validate perimeter rune points
+        run: |
+          python - <<'PY'
+          import gzip
+          import importlib.util
+          import os
+
+          spec = importlib.util.spec_from_file_location('basecamp_gen', 'tools/generate_basecamp_structure.py')
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+
+          candidates = [
+              'basecamp_red', 'basecamp_orange', 'basecamp_yellow', 'basecamp_lime',
+              'basecamp_green', 'basecamp_cyan', 'basecamp_light_blue', 'basecamp_blue',
+              'basecamp_purple', 'basecamp_white'
+          ]
+          expected = 'minecraft:yellow_glazed_terracotta'
+          for name in candidates:
+              cfg = mod.VARIANTS[name]
+              assert cfg['point'] == expected, (name, cfg['point'])
+              mod.blocks.clear()
+              mod.base_disc(cfg)
+              mod.approaches(cfg)
+              mod.magic_altar(cfg)
+              mod.pillars(cfg)
+              points = []
+              for dx, dz in mod.pattern_markers(cfg['style']):
+                  ix, iz = int(round(dx * 0.80)), int(round(dz * 0.80))
+                  pos = (mod.CENTER + ix, 2, mod.CENTER + iz)
+                  points.append(pos)
+                  assert mod.blocks[pos][0] == expected, (name, pos, mod.blocks[pos][0])
+              assert len(set(points)) == 8, (name, points)
+
+          root = 'src/main/resources/data/njw_after_the_end/structure/basecamp'
+          for name in candidates + ['basecamp_01', 'basecamp_mossy']:
+              nbt = os.path.join(root, name + '.nbt')
+              assert os.path.isfile(nbt), nbt
+              with gzip.open(nbt, 'rb') as f:
+                  raw = f.read()
+              for token in (b'DataVersion', b'palette', b'blocks', b'entities'):
+                  assert token in raw, (name, token)
+          with gzip.open(os.path.join(root, 'basecamp_mossy.nbt'), 'rb') as f:
+              mossy = f.read()
+          for token in (b'mossy_stone_bricks', b'cracked_stone_bricks', b'cobweb'):
+              assert token in mossy, token
+          print('Validated yellow perimeter points for', len(candidates), 'color variants')
+          PY
+
+      - name: Commit generated variants
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/generate_basecamp_structure.py src/main/resources/data/njw_after_the_end/structure/basecamp/*.nbt
+          git rm .github/workflows/regenerate-basecamp-variants-v7.yml
+          git commit -m 'feat: restore yellow basecamp rune points'
+          git push
