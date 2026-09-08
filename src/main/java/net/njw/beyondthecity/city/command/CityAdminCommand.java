@@ -2,7 +2,6 @@ package net.njw.beyondthecity.city.command;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -23,14 +22,9 @@ public final class CityAdminCommand {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
-        event.getDispatcher().register(createRoot("ate"));
-        event.getDispatcher().register(createRoot("btc"));
-    }
-
-    private static LiteralArgumentBuilder<CommandSourceStack> createRoot(String name) {
-        return Commands.literal(name)
-                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
-                .then(Commands.literal("city")
+        event.getDispatcher().register(
+                Commands.literal("city")
+                        .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                         .then(Commands.literal("create")
                                 .executes(context -> createCity(context.getSource(), true))
                                 .then(Commands.literal("locked").executes(context -> createCity(context.getSource(), false))))
@@ -47,7 +41,8 @@ public final class CityAdminCommand {
                         .then(Commands.literal("max")
                                 .executes(context -> showMaxCityCount(context.getSource()))
                                 .then(Commands.argument("count", IntegerArgumentType.integer(1))
-                                        .executes(context -> setMaxCityCount(context.getSource(), IntegerArgumentType.getInteger(context, "count"))))));
+                                        .executes(context -> setMaxCityCount(context.getSource(), IntegerArgumentType.getInteger(context, "count")))))
+        );
     }
 
     private static int createCity(CommandSourceStack source, boolean accessible) {

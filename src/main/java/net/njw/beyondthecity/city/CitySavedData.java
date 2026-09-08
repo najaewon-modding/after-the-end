@@ -52,7 +52,7 @@ public final class CitySavedData extends SavedData {
     private static final Codec<Map<String, PregenerationState>> PREGENERATION_STATES_CODEC = Codec.unboundedMap(Codec.STRING, PREGENERATION_STATE_CODEC);
 
     public static final SavedDataType<CitySavedData> TYPE = new SavedDataType<>(
-            Identifier.fromNamespaceAndPath("njw_beyond_the_city", "city_data"),
+            Identifier.fromNamespaceAndPath("njw_after_the_end", "city_data"),
             CitySavedData::new,
             RecordCodecBuilder.create(instance -> instance.group(
                     PLAYER_POSITIONS_CODEC.fieldOf("playerPositions").forGetter(CitySavedData::serializePlayerPositions),

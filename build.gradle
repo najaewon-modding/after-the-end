@@ -33,10 +33,19 @@ neoForge {
     runs {
         client {
             client()
+            gameDirectory = project.file('run/client1')
+            programArguments.addAll '--username', 'DevPlayer1'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        client2 {
+            client()
+            gameDirectory = project.file('run/client2')
+            programArguments.addAll '--username', 'DevPlayer2'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
         server {
             server()
+            gameDirectory = project.file('run/server')
             programArgument '--nogui'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
@@ -107,6 +116,10 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+tasks.named('runServer') {
+    standardInput = System.in
 }
 
 idea {
