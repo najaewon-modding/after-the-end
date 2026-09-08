@@ -144,23 +144,53 @@ def pillars(cfg):
 
 def add_ruin_decay(cfg):
     if not cfg["decayed"]: return
+
+    # At 11x11 every missing block matters, so use a few deliberate
+    # contiguous bites rather than sparse single-block damage.
     missing = [
-        (5, 2, 2), (8, 2, 5), (3, 2, 7),
-        (5, 1, 1), (9, 1, 6), (2, 1, 7),
-        (1, 5, 1), (1, 4, 1), (9, 5, 9),
+        # Raised magic floor: open three obvious gaps in the circle.
+        (4, 2, 2), (5, 2, 2), (6, 2, 2),
+        (8, 2, 4), (8, 2, 5), (8, 2, 6),
+        (6, 2, 8), (5, 2, 8), (3, 2, 7),
+
+        # Main platform and approaches: chipped footprint, not just surface weathering.
+        (4, 1, 1), (5, 1, 1), (6, 1, 1),
+        (9, 1, 4), (9, 1, 5), (9, 1, 6),
+        (5, 1, 9), (6, 1, 9), (2, 1, 7),
+        (3, 0, 1), (4, 0, 1), (5, 0, 1),
+        (9, 0, 4), (9, 0, 5), (9, 0, 6),
+
+        # Short obelisks with visibly different surviving heights.
+        (1, 5, 1), (1, 4, 1),
+        (9, 5, 1),
+        (1, 5, 9),
+        (9, 5, 9), (9, 4, 9),
     ]
     for pos in missing: blocks.pop(pos, None)
+
     cracked = [
-        (4, 2, 2), (6, 2, 2), (8, 2, 4), (3, 2, 6),
-        (4, 1, 1), (6, 1, 1), (8, 1, 6), (2, 1, 6),
-        (1, 3, 1), (2, 1, 1), (8, 1, 9), (9, 3, 9),
+        (3, 2, 3), (7, 2, 3), (7, 2, 4), (7, 2, 7),
+        (4, 2, 7), (3, 2, 6),
+        (3, 1, 2), (7, 1, 2), (8, 1, 3), (8, 1, 7),
+        (7, 1, 8), (4, 1, 8), (2, 1, 6),
+        (1, 3, 1), (2, 1, 1), (9, 3, 1),
+        (1, 3, 9), (8, 1, 9), (9, 3, 9),
     ]
     for pos in cracked:
         if pos in blocks: put(*pos, cfg["aged"])
-    mossy = [(2, 1, 2), (3, 1, 2), (2, 1, 8), (3, 1, 8), (8, 1, 8), (7, 1, 8), (1, 2, 9)]
+
+    mossy = [
+        (2, 1, 2), (3, 1, 2), (2, 1, 8), (3, 1, 8),
+        (8, 1, 8), (7, 1, 8), (1, 2, 9), (8, 1, 2),
+    ]
     for pos in mossy:
         if pos in blocks: put(*pos, cfg["moss"])
-    webs = [(1, 4, 1), (2, 3, 1), (8, 3, 9), (5, 3, 2), (8, 3, 5), (3, 3, 7)]
+
+    webs = [
+        (1, 4, 1), (2, 3, 1), (9, 4, 1),
+        (1, 4, 9), (8, 3, 9), (9, 4, 9),
+        (5, 3, 2), (8, 3, 5), (5, 3, 8),
+    ]
     for pos in webs:
         if pos not in blocks: put(*pos, "minecraft:cobweb")
 

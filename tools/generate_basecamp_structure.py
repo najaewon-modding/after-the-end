@@ -242,56 +242,81 @@ def write_structure(name):
 def add_ruin_decay(cfg):
     if cfg["aged_level"] < 2: return
 
-    # Break the otherwise pristine circular silhouette. These gaps are
-    # deliberately clustered and asymmetric so the altar reads as a
-    # neglected ruin rather than a clean altar with moss painted on it.
+    # Ruined variants deliberately lose contiguous sections instead of
+    # merely swapping materials. The altar should remain recognizable,
+    # but its circles, approaches, and obelisks must no longer read as pristine.
     missing = [
-        # Inner stair ring and glazed outer rune ring.
-        (13, 1, 6), (14, 1, 6), (20, 1, 12), (20, 1, 13),
-        (18, 1, 18), (8, 1, 18),
-        (13, 2, 7), (14, 2, 7), (19, 2, 12), (19, 2, 13),
-        (17, 2, 18), (8, 2, 17),
-        # Outer platform rim and two worn approach slabs.
-        (13, 1, 3), (14, 1, 3), (22, 1, 17), (5, 1, 7), (3, 1, 14),
-        (14, 1, 1), (12, 1, 25),
-        # Broken obelisk details: one noticeably shortened pillar and
-        # smaller losses on the other corners.
-        (4, 7, 4), (4, 6, 4), (5, 4, 4),
-        (22, 7, 22), (22, 4, 21), (21, 2, 4), (4, 4, 21),
+        # Central altar: broad breaks through the raised stair ring.
+        (11, 1, 6), (12, 1, 6), (13, 1, 6), (14, 1, 6),
+        (20, 1, 11), (20, 1, 12), (20, 1, 13), (20, 1, 14),
+        (16, 1, 19), (15, 1, 20), (14, 1, 20), (13, 1, 20),
+        (6, 1, 14), (6, 1, 13), (6, 1, 12),
+
+        # Central magic floor: several chunks of the glazed circle itself are gone.
+        (11, 2, 7), (12, 2, 7), (13, 2, 7), (14, 2, 7), (15, 2, 7),
+        (19, 2, 11), (19, 2, 12), (19, 2, 13), (19, 2, 14),
+        (17, 2, 18), (16, 2, 18), (15, 2, 19), (14, 2, 19),
+        (8, 2, 17), (7, 2, 14), (7, 2, 13),
+
+        # Outer circular platform: break both the upper rim and lower footprint.
+        (12, 1, 3), (13, 1, 3), (14, 1, 3),
+        (23, 1, 12), (23, 1, 13), (23, 1, 14),
+        (15, 1, 23), (14, 1, 23), (13, 1, 23),
+        (3, 1, 15), (3, 1, 14),
+        (10, 0, 3), (11, 0, 3), (12, 0, 3),
+        (23, 0, 11), (23, 0, 12), (23, 0, 13),
+        (16, 0, 23), (15, 0, 23), (3, 0, 15), (3, 0, 14),
+
+        # Worn approaches: not all four entrances survive intact.
+        (12, 1, 1), (14, 1, 1),
+        (12, 1, 25), (13, 1, 25),
+        (1, 1, 12), (1, 1, 13),
+        (25, 1, 14),
+
+        # Obelisks: asymmetric height loss and missing decorative pieces.
+        (4, 7, 4), (4, 6, 4), (4, 5, 4), (5, 4, 4),
+        (22, 7, 4), (22, 6, 4), (21, 4, 4),
+        (4, 7, 22), (4, 4, 21),
+        (22, 7, 22), (22, 6, 22), (22, 5, 22), (22, 4, 21),
+        (21, 2, 4),
     ]
     for pos in missing:
         blocks.pop(pos, None)
 
-    # Expose cracked masonry around the missing sections, including a
-    # few blocks that interrupt the glazed ring itself.
+    # Cracked masonry clusters around fracture edges, making the transition
+    # between intact stone and empty space visually explicit.
     cracked = [
-        (12, 2, 7), (15, 2, 7), (19, 2, 14), (16, 2, 18), (8, 2, 16),
-        (12, 1, 6), (15, 1, 6), (20, 1, 14), (17, 1, 18), (9, 1, 18),
-        (12, 1, 4), (15, 1, 4), (21, 1, 17), (6, 1, 7), (4, 1, 15),
+        (10, 2, 8), (11, 2, 8), (16, 2, 8), (18, 2, 10),
+        (18, 2, 15), (17, 2, 17), (13, 2, 18), (9, 2, 16),
+        (8, 2, 15), (8, 2, 12),
+        (10, 1, 6), (15, 1, 6), (19, 1, 10), (20, 1, 15),
+        (17, 1, 18), (12, 1, 19), (7, 1, 15), (7, 1, 11),
+        (11, 1, 4), (15, 1, 4), (22, 1, 11), (22, 1, 15),
+        (16, 1, 22), (12, 1, 22), (4, 1, 16), (4, 1, 13),
         (3, 1, 4), (4, 2, 3), (5, 3, 4),
-        (21, 1, 22), (22, 2, 21), (21, 3, 22),
-        (3, 2, 22), (4, 3, 21), (22, 2, 5),
+        (21, 1, 4), (22, 2, 5), (21, 3, 4),
+        (3, 2, 22), (4, 3, 21), (21, 1, 22), (22, 2, 21),
     ]
     for pos in cracked:
         if pos in blocks: put(*pos, cfg["aged"])
 
-    # Moss is kept in uneven clusters instead of being uniformly
-    # distributed, suggesting long-term moisture and abandonment.
+    # Moss stays clustered instead of uniformly coating the ruin.
     mossy = [
-        (10, 1, 5), (9, 1, 6), (7, 1, 9), (6, 1, 10),
-        (5, 1, 18), (6, 1, 19), (8, 1, 21),
+        (9, 1, 5), (8, 1, 6), (7, 1, 9), (6, 1, 10),
+        (5, 1, 18), (6, 1, 19), (8, 1, 21), (9, 1, 21),
         (3, 1, 5), (3, 2, 4), (4, 3, 3),
-        (21, 1, 21), (22, 1, 20), (23, 2, 22),
+        (20, 1, 21), (21, 1, 21), (22, 1, 20), (23, 2, 22),
+        (18, 1, 7), (19, 1, 8),
     ]
     for pos in mossy:
         if pos in blocks: put(*pos, cfg["moss"])
 
-    # Cobwebs now gather around collapsed edges and pillar cavities,
-    # while several damaged locations remain genuinely empty.
+    # Cobwebs occupy cavities and broken ledges but do not fill every gap.
     webs = [
-        (13, 3, 7), (19, 3, 13), (17, 3, 18), (8, 3, 17),
-        (4, 6, 4), (5, 4, 5), (21, 4, 5),
-        (5, 4, 21), (21, 4, 21), (22, 7, 21),
+        (12, 3, 7), (14, 3, 7), (19, 3, 12), (19, 3, 14),
+        (16, 3, 18), (8, 3, 16),
+        (4, 6, 4), (5, 4, 5), (22, 6, 4), (21, 4, 5),
+        (5, 4, 21), (21, 4, 21), (22, 6, 22),
     ]
     for pos in webs:
         if pos not in blocks: put(*pos, "minecraft:cobweb")
