@@ -1,6 +1,4 @@
-from pathlib import Path
-
-planner = r'''package net.njw.aftertheend.city.basecamp;
+package net.njw.aftertheend.city.basecamp;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -736,61 +734,3 @@ final class BasecampPlacementPlanner {
     private record SearchBounds(int minCenterX, int maxCenterX, int minCenterZ, int maxCenterZ) { }
     private record SelectionResult(int[] selected, double objective, int largePosition, List<Double> restartObjectives) { }
 }
-'''
-
-planner_path = Path("src/main/java/net/njw/aftertheend/city/basecamp/BasecampPlacementPlanner.java")
-planner_path.write_text(planner)
-
-service_path = Path("src/main/java/net/njw/aftertheend/city/basecamp/BasecampPlacementService.java")
-text = service_path.read_text()
-
-old_block_start = text.index("        List<BasecampSpec> placementOrder = new ArrayList<>(specs);")
-old_block_end_marker = "        plans.sort(Comparator.comparingInt(plan -> plan.spec().index()));"
-old_block_end = text.index(old_block_end_marker, old_block_start) + len(old_block_end_marker)
-new_block = '''        List<BasecampPlacementPlanner.Request> requests = specs.stream()
-                .map(spec -> new BasecampPlacementPlanner.Request(spec.index(), spec.large()))
-                .toList();
-        List<BasecampPlacementPlanner.Plan> sitePlans = BasecampPlacementPlanner.plan(level, region, requests, seed, city.id());
-
-        List<PlannedBasecamp> plans = new ArrayList<>(sitePlans.size());
-        for (BasecampPlacementPlanner.Plan site : sitePlans) {
-            BasecampSpec spec = specs.get(site.specIndex());
-            int half = spec.size().width() / 2;
-            int originY = Math.max(level.getMinY(), Math.min(level.getMaxY() - spec.size().height() + 1, site.targetSurfaceY() - 1));
-            PlacementCandidate candidate = new PlacementCandidate(
-                    site.centerX(), site.centerZ(), site.centerX() - half, originY, site.centerZ() - half,
-                    originY + 1, site.terrainScore()
-            );
-            plans.add(new PlannedBasecamp(spec, candidate));
-        }
-        plans.sort(Comparator.comparingInt(plan -> plan.spec().index()));'''
-text = text[:old_block_start] + new_block + text[old_block_end:]
-
-# Remove the obsolete sequential/grid planner while preserving the surface helper used by terrain trimming.
-obsolete_start = text.index("    private static List<CandidatePoint> buildCandidatePool(")
-obsolete_end = text.index("    private static SurfaceSample findSurfaceSample(", obsolete_start)
-text = text[:obsolete_start] + text[obsolete_end:]
-
-text = text.replace("import java.util.HashSet;\n", "")
-text = text.replace("import java.util.Set;\n", "")
-for constant in [
-    "    private static final int CANDIDATE_GRID_AXIS = 16;\n",
-    "    private static final int REFINED_CANDIDATE_COUNT = 96;\n",
-    "    private static final int FALLBACK_GRID_AXIS = 20;\n",
-    "    private static final int CITY_EDGE_MARGIN = 8;\n",
-    "    private static final int PREFERRED_BASECAMP_DISTANCE = 160;\n",
-    "    private static final int PREFERRED_EDGE_DISTANCE = 64;\n",
-    "    private static final int MIN_STRUCTURE_GAP = 12;\n",
-]:
-    text = text.replace(constant, "")
-
-for record_line in [
-    "    private record PlacedFootprint(int centerX, int centerZ, int halfWidth) { }\n",
-    "    private record CandidatePoint(int x, int z) { }\n",
-    "    private record SearchBounds(int minCenterX, int maxCenterX, int minCenterZ, int maxCenterZ) {\n        boolean contains(int x, int z) {\n            return x >= minCenterX && x <= maxCenterX && z >= minCenterZ && z <= maxCenterZ;\n        }\n    }\n",
-    "    private record TerrainAssessment(int targetSurfaceY, double score, double roughness, double cutFraction,\n                                     double floatingFraction, double severeFloatingFraction, double fluidFraction) { }\n",
-    "    private record ScoredCandidate(int centerX, int centerZ, double score, TerrainAssessment terrain) { }\n",
-]:
-    text = text.replace(record_line, "")
-
-service_path.write_text(text)
