@@ -112,73 +112,72 @@ def shifted_ring(dx, dz, cx, cz, radius, tolerance=0.42):
 
 def pattern_block(dx, dz, r, cfg):
     style = cfg["style"]
-    theta = math.atan2(dz, dx)
+
+    # Every variant keeps a complete circular glazed-terracotta frame.
+    if 5.65 <= r <= 6.45:
+        return cfg["outer"]
+
+    # The inner motifs deliberately avoid 180-degree point symmetry.
+    # Several are mirror-symmetric across the X axis, but their north/south
+    # composition is intentionally different.
     if style == "classic":
-        if 5.65 <= r <= 6.45: return cfg["outer"]
         if on_triangle(dx, dz): return cfg["primary"]
         if 2.15 <= r <= 2.75: return cfg["secondary"]
     elif style == "broken_arc":
-        if 5.65 <= r <= 6.45 and -2.75 < theta < 2.35 and not (-0.35 < theta < 0.55): return cfg["outer"]
-        if near_segment(dx, dz, (-5, 3), (2, -4), 0.52): return cfg["primary"]
-        if shifted_ring(dx, dz, 1, -1, 2.7) and (dx >= 0 or dz <= 0): return cfg["secondary"]
+        if shifted_ring(dx, dz, 0, -1, 3.8) and dz <= 1: return cfg["primary"]
+        if abs(dx) <= 3 and dz == 2: return cfg["secondary"]
+        if dx == 0 and -4 <= dz <= -2: return cfg["secondary"]
     elif style == "comet":
-        if 5.7 <= r <= 6.4 and (-2.45 < theta < 1.45): return cfg["outer"]
-        if shifted_ring(dx, dz, 2, -2, 2.3) and dx >= 0: return cfg["primary"]
-        if near_segment(dx, dz, (-5, 4), (2, -1), 0.58) or near_segment(dx, dz, (-4, 5), (0, 1), 0.45): return cfg["secondary"]
+        if dx == 0 and -5 <= dz <= 2: return cfg["primary"]
+        if near_segment(dx, dz, (0, -1), (4, -4), 0.48) or near_segment(dx, dz, (0, -1), (-4, -4), 0.48): return cfg["primary"]
+        if abs(dx) <= 2 and dz == 2: return cfg["secondary"]
     elif style == "offset_diamond":
-        d = abs(dx - 1) + abs(dz + 1)
-        if d in (7, 8) and not (dx < -1 and dz > 1): return cfg["outer"]
-        if d in (4, 5) and not (dx > 3 and dz < -2): return cfg["primary"]
-        if near_segment(dx, dz, (-3, 3), (4, -2), 0.46): return cfg["secondary"]
+        d = abs(dx) + abs(dz + 1)
+        if d in (4, 5): return cfg["primary"]
+        if abs(dx) <= 2 and dz == 3: return cfg["secondary"]
+        if dx == 0 and dz in (-4, -3): return cfg["secondary"]
     elif style == "vine":
-        curve = 0.48 * dx + 1.15 * math.sin((dx + 2) * 0.85)
-        if -5 <= dx <= 5 and abs(dz - curve) <= 0.55: return cfg["primary"]
-        if near_segment(dx, dz, (0, 1), (5, -4), 0.5): return cfg["secondary"]
-        if 5.7 <= r <= 6.4 and (theta < -0.55 or theta > 2.05): return cfg["outer"]
+        target = -3.2 + 0.22 * dx * dx
+        if abs(dx) <= 5 and abs(dz - target) <= 0.55: return cfg["primary"]
+        if near_segment(dx, dz, (0, -1), (3, 2), 0.45) or near_segment(dx, dz, (0, -1), (-3, 2), 0.45): return cfg["secondary"]
     elif style == "branch":
-        if near_segment(dx, dz, (-2, 5), (1, -4), 0.52): return cfg["primary"]
-        if near_segment(dx, dz, (0, 0), (5, 2), 0.5) or near_segment(dx, dz, (-1, 2), (-5, 0), 0.5): return cfg["secondary"]
-        if 5.7 <= r <= 6.4 and (-1.55 < theta < 2.7) and not (0.75 < theta < 1.25): return cfg["outer"]
+        if dx == 0 and -4 <= dz <= 4: return cfg["primary"]
+        if near_segment(dx, dz, (0, -1), (4, -4), 0.48) or near_segment(dx, dz, (0, -1), (-4, -4), 0.48): return cfg["secondary"]
+        if near_segment(dx, dz, (0, 2), (3, 4), 0.42) or near_segment(dx, dz, (0, 2), (-3, 4), 0.42): return cfg["primary"]
     elif style == "tide":
-        if shifted_ring(dx, dz, -1, 1, 5.6) and (dz <= 2 or dx >= 2): return cfg["outer"]
-        if shifted_ring(dx, dz, 1, -1, 3.7) and (dx <= 3 and dz >= -4): return cfg["primary"]
-        if shifted_ring(dx, dz, 2, -1, 2.0) and dz <= 1: return cfg["secondary"]
+        if shifted_ring(dx, dz, 0, -1, 4.0) and dz <= 1: return cfg["primary"]
+        if shifted_ring(dx, dz, 0, 0, 2.5) and dz >= -1: return cfg["secondary"]
+        if abs(dx) <= 1 and dz == 3: return cfg["secondary"]
     elif style == "shard":
-        if near_segment(dx, dz, (-5, 4), (2, -5), 0.5): return cfg["outer"]
-        if near_segment(dx, dz, (-2, 5), (4, 1), 0.48): return cfg["primary"]
-        if near_segment(dx, dz, (1, 3), (5, -2), 0.46) or near_segment(dx, dz, (-4, -1), (-1, -4), 0.42): return cfg["secondary"]
+        if dx == 0 and -5 <= dz <= 1: return cfg["primary"]
+        if near_segment(dx, dz, (0, -2), (3, 2), 0.45) or near_segment(dx, dz, (0, -2), (-3, 2), 0.45): return cfg["secondary"]
+        if near_segment(dx, dz, (0, -3), (2, -5), 0.38) or near_segment(dx, dz, (0, -3), (-2, -5), 0.38): return cfg["primary"]
     elif style == "crescent":
-        if shifted_ring(dx, dz, -1, 0, 5.8) and dx >= -2: return cfg["outer"]
-        if shifted_ring(dx, dz, 1, 0, 3.8) and dx <= 2 and dz >= -4: return cfg["primary"]
-        if near_segment(dx, dz, (-2, -3), (4, 2), 0.48): return cfg["secondary"]
+        if shifted_ring(dx, dz, 0, -1, 4.0) and dz <= 2: return cfg["primary"]
+        if shifted_ring(dx, dz, 0, -1, 2.7) and dz <= 0: return cfg["secondary"]
+        if abs(dx) <= 2 and dz == 3: return cfg["secondary"]
     elif style == "spiral":
-        sx, sz = dx - 0.5, dz + 0.5
-        sr = math.hypot(sx, sz)
-        st = math.atan2(sz, sx)
-        target = 1.2 + 0.72 * (st + math.pi)
-        if 1.1 <= sr <= 5.9 and abs(sr - target) <= 0.48: return cfg["primary"]
-        if 5.7 <= r <= 6.4 and (-2.9 < theta < 0.95): return cfg["outer"]
-        if near_segment(dx, dz, (0, 0), (4, -3), 0.42): return cfg["secondary"]
+        # A one-sided hooked spiral: mirror-friendly near the crown,
+        # but deliberately opens only toward the south.
+        if shifted_ring(dx, dz, 0, -1, 4.1) and dz <= 1: return cfg["primary"]
+        if shifted_ring(dx, dz, 0, 0, 2.8) and dz >= -1: return cfg["secondary"]
+        if dx == 0 and 1 <= dz <= 4: return cfg["primary"]
     elif style == "constellation":
-        points = {(-5, 2), (-3, -3), (-1, 4), (1, 0), (3, -4), (4, 3), (6, 1)}
-        if (dx, dz) in points: return cfg["outer"]
-        if near_segment(dx, dz, (-5, 2), (-1, 4), 0.38) or near_segment(dx, dz, (-1, 4), (1, 0), 0.38): return cfg["primary"]
-        if near_segment(dx, dz, (1, 0), (4, 3), 0.38) or near_segment(dx, dz, (1, 0), (3, -4), 0.38): return cfg["secondary"]
+        points = {(0, -4), (-3, -2), (3, -2), (-4, 2), (4, 2), (0, 3)}
+        if (dx, dz) in points: return cfg["primary"]
+        if near_segment(dx, dz, (0, -4), (3, -2), 0.35) or near_segment(dx, dz, (0, -4), (-3, -2), 0.35): return cfg["secondary"]
+        if near_segment(dx, dz, (3, -2), (4, 2), 0.35) or near_segment(dx, dz, (-3, -2), (-4, 2), 0.35): return cfg["secondary"]
+        if near_segment(dx, dz, (-4, 2), (0, 3), 0.35) or near_segment(dx, dz, (4, 2), (0, 3), 0.35): return cfg["primary"]
+
     if r <= 1.15: return cfg["core"]
     if dx == 0 and dz == 0: return cfg["rune"]
     return None
 
-STYLE_PHASE = {"broken_arc": 0, "comet": 1, "offset_diamond": 2, "vine": 3, "branch": 0, "tide": 1, "shard": 2, "crescent": 3, "spiral": 1, "constellation": 2}
-
-def rotate_point(dx, dz, turns):
-    for _ in range(turns % 4): dx, dz = -dz, dx
-    return dx, dz
-
 def pattern_markers(style):
-    if style == "classic": return [(0, -7), (5, -5), (7, 0), (5, 5), (0, 7), (-5, 5), (-7, 0), (-5, -5)]
-    base = [(0, -7), (5, -5), (7, 1), (4, 6), (-2, 7), (-7, 3), (-6, -4)]
-    turns = STYLE_PHASE.get(style, 0)
-    return [rotate_point(dx, dz, turns) for dx, dz in base]
+    if style == "classic":
+        return [(0, -7), (5, -5), (7, 0), (5, 5), (0, 7), (-5, 5), (-7, 0), (-5, -5)]
+    # Mirror-symmetric left/right, intentionally different north/south.
+    return [(0, -7), (5, -5), (-5, -5), (7, 0), (-7, 0), (4, 6), (-4, 6)]
 
 def magic_altar(cfg):
     for x in range(CENTER - 7, CENTER + 8):
