@@ -102,19 +102,14 @@ public final class CityListScreen extends Screen {
         graphics.text(font, dimension, x, y, MUTED_COLOR, false);
         int rowY = y + 12;
         graphics.text(font, Component.literal("X"), x, rowY, TEXT_COLOR, false);
-        drawRightAligned(graphics, Integer.toString(region.minBlockX()), x + 46, rowY);
-        graphics.text(font, Component.literal("Z"), x + 52, rowY, TEXT_COLOR, false);
-        drawRightAligned(graphics, Integer.toString(region.minBlockZ()), x + 98, rowY);
-        graphics.text(font, Component.literal("~"), x + 105, rowY, TEXT_COLOR, false);
-        graphics.text(font, Component.literal("X"), x + 118, rowY, TEXT_COLOR, false);
-        drawRightAligned(graphics, Integer.toString(region.maxBlockX()), x + 160, rowY);
-        graphics.text(font, Component.literal("Z"), x + 166, rowY, TEXT_COLOR, false);
-        drawRightAligned(graphics, Integer.toString(region.maxBlockZ()), x + 212, rowY);
-    }
-
-    private void drawRightAligned(GuiGraphicsExtractor graphics, String text, int right, int y) {
-        Component component = Component.literal(text);
-        graphics.text(font, component, right - font.width(component), y, TEXT_COLOR, false);
+        graphics.text(font, Component.literal(Integer.toString(region.minBlockX())), x + 10, rowY, TEXT_COLOR, false);
+        graphics.text(font, Component.literal("Z"), x + 50, rowY, TEXT_COLOR, false);
+        graphics.text(font, Component.literal(Integer.toString(region.minBlockZ())), x + 60, rowY, TEXT_COLOR, false);
+        graphics.text(font, Component.literal("~"), x + 101, rowY, TEXT_COLOR, false);
+        graphics.text(font, Component.literal("X"), x + 114, rowY, TEXT_COLOR, false);
+        graphics.text(font, Component.literal(Integer.toString(region.maxBlockX())), x + 124, rowY, TEXT_COLOR, false);
+        graphics.text(font, Component.literal("Z"), x + 164, rowY, TEXT_COLOR, false);
+        graphics.text(font, Component.literal(Integer.toString(region.maxBlockZ())), x + 174, rowY, TEXT_COLOR, false);
     }
 
     private void renderBottomButtons(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int left, int top) {
