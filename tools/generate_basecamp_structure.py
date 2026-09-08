@@ -27,16 +27,16 @@ STONE = {
 VARIANTS = {
     "basecamp_01": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
     "basecamp_mossy": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "aged_level": 2},
-    "basecamp_red": {**STONE, "style": "triad", "outer": "minecraft:red_glazed_terracotta", "primary": "minecraft:orange_glazed_terracotta", "secondary": "minecraft:yellow_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:red_glazed_terracotta", "aged_level": 0},
-    "basecamp_orange": {**STONE, "style": "sun", "outer": "minecraft:orange_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:light_gray_glazed_terracotta", "rune": "minecraft:orange_glazed_terracotta", "aged_level": 0},
-    "basecamp_yellow": {**STONE, "style": "diamond", "outer": "minecraft:yellow_glazed_terracotta", "primary": "minecraft:white_glazed_terracotta", "secondary": "minecraft:orange_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
-    "basecamp_lime": {**STONE, "style": "petal", "outer": "minecraft:lime_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:yellow_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "aged_level": 0},
-    "basecamp_green": {**STONE, "style": "cross", "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "aged_level": 0},
-    "basecamp_cyan": {**STONE, "style": "wave", "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "aged_level": 0},
-    "basecamp_light_blue": {**STONE, "style": "star", "outer": "minecraft:light_blue_glazed_terracotta", "primary": "minecraft:white_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "aged_level": 0},
-    "basecamp_blue": {**STONE, "style": "ring_cross", "outer": "minecraft:blue_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:blue_glazed_terracotta", "aged_level": 0},
-    "basecamp_purple": {**STONE, "style": "diamond_star", "outer": "minecraft:purple_glazed_terracotta", "primary": "minecraft:blue_glazed_terracotta", "secondary": "minecraft:light_blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:purple_glazed_terracotta", "aged_level": 0},
-    "basecamp_white": {**STONE, "style": "glyph", "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "aged_level": 0},
+    "basecamp_red": {**STONE, "style": "broken_arc", "outer": "minecraft:red_glazed_terracotta", "primary": "minecraft:orange_glazed_terracotta", "secondary": "minecraft:yellow_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:red_glazed_terracotta", "aged_level": 0},
+    "basecamp_orange": {**STONE, "style": "comet", "outer": "minecraft:orange_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:light_gray_glazed_terracotta", "rune": "minecraft:orange_glazed_terracotta", "aged_level": 0},
+    "basecamp_yellow": {**STONE, "style": "offset_diamond", "outer": "minecraft:yellow_glazed_terracotta", "primary": "minecraft:white_glazed_terracotta", "secondary": "minecraft:orange_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
+    "basecamp_lime": {**STONE, "style": "vine", "outer": "minecraft:lime_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:yellow_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "aged_level": 0},
+    "basecamp_green": {**STONE, "style": "branch", "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "aged_level": 0},
+    "basecamp_cyan": {**STONE, "style": "tide", "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "aged_level": 0},
+    "basecamp_light_blue": {**STONE, "style": "shard", "outer": "minecraft:light_blue_glazed_terracotta", "primary": "minecraft:white_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "aged_level": 0},
+    "basecamp_blue": {**STONE, "style": "crescent", "outer": "minecraft:blue_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:blue_glazed_terracotta", "aged_level": 0},
+    "basecamp_purple": {**STONE, "style": "spiral", "outer": "minecraft:purple_glazed_terracotta", "primary": "minecraft:blue_glazed_terracotta", "secondary": "minecraft:light_blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:purple_glazed_terracotta", "aged_level": 0},
+    "basecamp_white": {**STONE, "style": "constellation", "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "aged_level": 0},
 }
 
 def put(x, y, z, name, properties=None, nbt=None):
@@ -58,8 +58,8 @@ def aged_surface(x, y, z, default, cfg):
     if level == 0: return default
     h = hash3(x, y, z)
     if level >= 2:
-        if h % 13 in (0, 1): return cfg["moss"]
-        if h % 7 in (0, 1): return cfg["aged"]
+        if h % 17 in (0, 1): return cfg["moss"]
+        if h % 5 == 0 or h % 11 == 0: return cfg["aged"]
     return default
 
 def aged_stairs(x, y, z, cfg):
@@ -104,64 +104,81 @@ def on_triangle(dx, dz):
     a, b, c = (0, -4.3), (-3.8, 3.0), (3.8, 3.0)
     return min(segment_distance(dx, dz, *a, *b), segment_distance(dx, dz, *b, *c), segment_distance(dx, dz, *c, *a)) <= 0.38
 
-def outer_segment(dx, dz, r, style):
-    ring = 5.65 <= r <= 6.45
-    if not ring: return False
-    if style == "classic": return True
-    if style == "triad": return int((math.atan2(dz, dx) + math.pi) / (2 * math.pi) * 12) % 4 != 1
-    if style == "sun": return (abs(dx) + abs(dz)) % 2 == 0
-    if style == "diamond": return abs(dx) + abs(dz) in (8, 9)
-    if style == "petal": return abs(dx) <= 2 or abs(dz) <= 2
-    if style == "cross": return abs(abs(dx) - abs(dz)) <= 1
-    if style == "wave": return int((math.atan2(dz, dx) + math.pi) / (2 * math.pi) * 16) % 2 == 0
-    if style == "star": return abs(dx) <= 1 or abs(dz) <= 1 or abs(abs(dx) - abs(dz)) <= 1
-    if style == "ring_cross": return 5.9 <= r <= 6.3
-    if style == "diamond_star": return abs(dx) + abs(dz) in (8, 9)
-    if style == "glyph": return (abs(dx), abs(dz)) in ((0, 6), (6, 0), (4, 4), (3, 5), (5, 3))
-    return False
+def near_segment(dx, dz, a, b, tolerance=0.48):
+    return segment_distance(dx, dz, *a, *b) <= tolerance
+
+def shifted_ring(dx, dz, cx, cz, radius, tolerance=0.42):
+    return abs(math.hypot(dx - cx, dz - cz) - radius) <= tolerance
 
 def pattern_block(dx, dz, r, cfg):
     style = cfg["style"]
-    if outer_segment(dx, dz, r, style): return cfg["outer"]
+    theta = math.atan2(dz, dx)
     if style == "classic":
+        if 5.65 <= r <= 6.45: return cfg["outer"]
         if on_triangle(dx, dz): return cfg["primary"]
         if 2.15 <= r <= 2.75: return cfg["secondary"]
-    elif style == "triad":
-        if on_triangle(dx, dz): return cfg["primary"]
-        if (dx == 0 or dz == 0) and 1.8 <= r <= 4.5: return cfg["secondary"]
-    elif style == "sun":
-        if 2.0 <= r <= 5.1 and (dx == 0 or dz == 0 or abs(dx) == abs(dz)): return cfg["primary"]
-        if 2.0 <= r <= 2.8: return cfg["secondary"]
-    elif style == "diamond":
-        d = abs(dx) + abs(dz)
-        if d in (5, 6): return cfg["primary"]
-        if d in (2, 3): return cfg["secondary"]
-    elif style == "petal":
-        if 2.0 <= r <= 5.0 and ((abs(dx) <= 1 and abs(dz) >= 2) or (abs(dz) <= 1 and abs(dx) >= 2)): return cfg["primary"]
-        if 1.8 <= r <= 2.7: return cfg["secondary"]
-    elif style == "cross":
-        if 2.0 <= r <= 5.0 and (dx == 0 or dz == 0): return cfg["primary"]
-        if 2.0 <= r <= 4.0 and abs(dx) == abs(dz): return cfg["secondary"]
-    elif style == "wave":
-        sector = int((math.atan2(dz, dx) + math.pi) / (2 * math.pi) * 12)
-        if 3.0 <= r <= 5.0 and sector % 3 == 0: return cfg["primary"]
-        if 1.8 <= r <= 2.8: return cfg["secondary"]
-    elif style == "star":
-        if 2.0 <= r <= 5.0 and (dx == 0 or dz == 0 or abs(dx) == abs(dz)): return cfg["primary"]
-        if 1.4 <= r <= 2.3: return cfg["secondary"]
-    elif style == "ring_cross":
-        if 3.4 <= r <= 4.0: return cfg["primary"]
-        if 1.5 <= r <= 4.8 and (dx == 0 or dz == 0): return cfg["secondary"]
-    elif style == "diamond_star":
-        d = abs(dx) + abs(dz)
-        if d in (5, 6): return cfg["primary"]
-        if 1.8 <= r <= 4.2 and abs(dx) == abs(dz): return cfg["secondary"]
-    elif style == "glyph":
-        if (abs(dx), abs(dz)) in ((0, 4), (4, 0), (3, 3), (1, 5), (5, 1)): return cfg["primary"]
-        if 2.0 <= r <= 2.8: return cfg["secondary"]
+    elif style == "broken_arc":
+        if 5.65 <= r <= 6.45 and -2.75 < theta < 2.35 and not (-0.35 < theta < 0.55): return cfg["outer"]
+        if near_segment(dx, dz, (-5, 3), (2, -4), 0.52): return cfg["primary"]
+        if shifted_ring(dx, dz, 1, -1, 2.7) and (dx >= 0 or dz <= 0): return cfg["secondary"]
+    elif style == "comet":
+        if 5.7 <= r <= 6.4 and (-2.45 < theta < 1.45): return cfg["outer"]
+        if shifted_ring(dx, dz, 2, -2, 2.3) and dx >= 0: return cfg["primary"]
+        if near_segment(dx, dz, (-5, 4), (2, -1), 0.58) or near_segment(dx, dz, (-4, 5), (0, 1), 0.45): return cfg["secondary"]
+    elif style == "offset_diamond":
+        d = abs(dx - 1) + abs(dz + 1)
+        if d in (7, 8) and not (dx < -1 and dz > 1): return cfg["outer"]
+        if d in (4, 5) and not (dx > 3 and dz < -2): return cfg["primary"]
+        if near_segment(dx, dz, (-3, 3), (4, -2), 0.46): return cfg["secondary"]
+    elif style == "vine":
+        curve = 0.48 * dx + 1.15 * math.sin((dx + 2) * 0.85)
+        if -5 <= dx <= 5 and abs(dz - curve) <= 0.55: return cfg["primary"]
+        if near_segment(dx, dz, (0, 1), (5, -4), 0.5): return cfg["secondary"]
+        if 5.7 <= r <= 6.4 and (theta < -0.55 or theta > 2.05): return cfg["outer"]
+    elif style == "branch":
+        if near_segment(dx, dz, (-2, 5), (1, -4), 0.52): return cfg["primary"]
+        if near_segment(dx, dz, (0, 0), (5, 2), 0.5) or near_segment(dx, dz, (-1, 2), (-5, 0), 0.5): return cfg["secondary"]
+        if 5.7 <= r <= 6.4 and (-1.55 < theta < 2.7) and not (0.75 < theta < 1.25): return cfg["outer"]
+    elif style == "tide":
+        if shifted_ring(dx, dz, -1, 1, 5.6) and (dz <= 2 or dx >= 2): return cfg["outer"]
+        if shifted_ring(dx, dz, 1, -1, 3.7) and (dx <= 3 and dz >= -4): return cfg["primary"]
+        if shifted_ring(dx, dz, 2, -1, 2.0) and dz <= 1: return cfg["secondary"]
+    elif style == "shard":
+        if near_segment(dx, dz, (-5, 4), (2, -5), 0.5): return cfg["outer"]
+        if near_segment(dx, dz, (-2, 5), (4, 1), 0.48): return cfg["primary"]
+        if near_segment(dx, dz, (1, 3), (5, -2), 0.46) or near_segment(dx, dz, (-4, -1), (-1, -4), 0.42): return cfg["secondary"]
+    elif style == "crescent":
+        if shifted_ring(dx, dz, -1, 0, 5.8) and dx >= -2: return cfg["outer"]
+        if shifted_ring(dx, dz, 1, 0, 3.8) and dx <= 2 and dz >= -4: return cfg["primary"]
+        if near_segment(dx, dz, (-2, -3), (4, 2), 0.48): return cfg["secondary"]
+    elif style == "spiral":
+        sx, sz = dx - 0.5, dz + 0.5
+        sr = math.hypot(sx, sz)
+        st = math.atan2(sz, sx)
+        target = 1.2 + 0.72 * (st + math.pi)
+        if 1.1 <= sr <= 5.9 and abs(sr - target) <= 0.48: return cfg["primary"]
+        if 5.7 <= r <= 6.4 and (-2.9 < theta < 0.95): return cfg["outer"]
+        if near_segment(dx, dz, (0, 0), (4, -3), 0.42): return cfg["secondary"]
+    elif style == "constellation":
+        points = {(-5, 2), (-3, -3), (-1, 4), (1, 0), (3, -4), (4, 3), (6, 1)}
+        if (dx, dz) in points: return cfg["outer"]
+        if near_segment(dx, dz, (-5, 2), (-1, 4), 0.38) or near_segment(dx, dz, (-1, 4), (1, 0), 0.38): return cfg["primary"]
+        if near_segment(dx, dz, (1, 0), (4, 3), 0.38) or near_segment(dx, dz, (1, 0), (3, -4), 0.38): return cfg["secondary"]
     if r <= 1.15: return cfg["core"]
     if dx == 0 and dz == 0: return cfg["rune"]
     return None
+
+STYLE_PHASE = {"broken_arc": 0, "comet": 1, "offset_diamond": 2, "vine": 3, "branch": 0, "tide": 1, "shard": 2, "crescent": 3, "spiral": 1, "constellation": 2}
+
+def rotate_point(dx, dz, turns):
+    for _ in range(turns % 4): dx, dz = -dz, dx
+    return dx, dz
+
+def pattern_markers(style):
+    if style == "classic": return [(0, -7), (5, -5), (7, 0), (5, 5), (0, 7), (-5, 5), (-7, 0), (-5, -5)]
+    base = [(0, -7), (5, -5), (7, 1), (4, 6), (-2, 7), (-7, 3), (-6, -4)]
+    turns = STYLE_PHASE.get(style, 0)
+    return [rotate_point(dx, dz, turns) for dx, dz in base]
 
 def magic_altar(cfg):
     for x in range(CENTER - 7, CENTER + 8):
@@ -180,9 +197,9 @@ def magic_altar(cfg):
             if r > 6.75: continue
             name = pattern_block(dx, dz, r, cfg)
             if name: put(x, 2, z, name, {"facing": radial_facing(dx, dz)})
-    for dx, dz in ((0, -7), (5, -5), (7, 0), (5, 5), (0, 7), (-5, 5), (-7, 0), (-5, -5)):
+    for dx, dz in pattern_markers(cfg["style"]):
         put(CENTER + dx, 2, CENTER + dz, cfg["marker"])
-        ix, iz = int(round(dx * 0.82)), int(round(dz * 0.82))
+        ix, iz = int(round(dx * 0.80)), int(round(dz * 0.80))
         put(CENTER + ix, 2, CENTER + iz, cfg["rune"], {"facing": radial_facing(ix, iz)})
 
 def pillar(px, pz, inward_x, inward_z, cfg):
@@ -263,12 +280,27 @@ def write_structure(name):
         with gzip.GzipFile(fileobj=file, mode="wb", mtime=0) as zipped: zipped.write(raw)
     print(f"Generated {name}: {len(block_entries)} blocks, {len(palette)} states, {os.path.getsize(output)} bytes")
 
+def add_mossy_decay(cfg):
+    if cfg["aged_level"] < 2: return
+    replacements = [(4, 4, 3), (22, 4, 23), (3, 4, 22)]
+    for pos in replacements:
+        if pos in blocks: put(*pos, "minecraft:cobweb")
+    overlays = [
+        (5, 3, 5), (21, 3, 5), (5, 3, 21), (21, 3, 21),
+        (5, 4, 5), (21, 4, 5), (5, 4, 21), (21, 4, 21),
+        (21, 2, 15), (6, 2, 8), (8, 2, 21), (18, 2, 4),
+        (3, 2, 10), (23, 2, 17),
+    ]
+    for pos in overlays:
+        if pos not in blocks: put(*pos, "minecraft:cobweb")
+
 def generate(name, cfg):
     blocks.clear()
     base_disc(cfg)
     approaches(cfg)
     magic_altar(cfg)
     pillars(cfg)
+    add_mossy_decay(cfg)
     write_structure(name)
 
 def main():
