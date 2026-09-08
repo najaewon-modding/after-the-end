@@ -91,7 +91,7 @@ public final class CityListScreen extends Screen {
         CityRegion overworldRegion = city.getRegion(Level.OVERWORLD.identifier());
         if (overworldRegion != null) {
             renderRegionBounds(graphics, x, detailY, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), overworldRegion);
-            detailY += 46;
+            detailY += 34;
         }
 
         CityRegion netherRegion = city.getRegion(Level.NETHER.identifier());
@@ -100,8 +100,7 @@ public final class CityListScreen extends Screen {
 
     private void renderRegionBounds(GuiGraphicsExtractor graphics, int x, int y, Component dimension, CityRegion region) {
         graphics.text(font, dimension, x, y, MUTED_COLOR, false);
-        graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", region.minBlockX(), region.minBlockZ()), x, y + 12, TEXT_COLOR, false);
-        graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", region.maxBlockX(), region.maxBlockZ()), x, y + 24, TEXT_COLOR, false);
+        graphics.text(font, Component.literal("X " + region.minBlockX() + " ~ " + region.maxBlockX() + "  Z " + region.minBlockZ() + " ~ " + region.maxBlockZ()), x, y + 12, TEXT_COLOR, false);
     }
 
     private void renderBottomButtons(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int left, int top) {
