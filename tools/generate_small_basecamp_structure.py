@@ -25,11 +25,11 @@ STONE = {
 }
 
 VARIANTS = {
-    "basecamp_small_01": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "aged": False},
-    "basecamp_small_mossy": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "aged": True},
-    "basecamp_small_cyan": {**STONE, "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "aged": False},
-    "basecamp_small_green": {**STONE, "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "aged": False},
-    "basecamp_small_white": {**STONE, "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "aged": False},
+    "basecamp_small_01": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "decayed": False},
+    "basecamp_small_mossy": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": True},
+    "basecamp_small_cyan": {**STONE, "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "decayed": False},
+    "basecamp_small_green": {**STONE, "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": False},
+    "basecamp_small_white": {**STONE, "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "decayed": False},
 }
 
 def put(x, y, z, name, properties=None, nbt=None):
@@ -47,14 +47,14 @@ def radial_facing(dx, dz):
     return "south" if dz >= 0 else "north"
 
 def weathered(x, y, z, default, cfg):
-    if not cfg["aged"]: return default
+    if not cfg["decayed"]: return default
     h = hash3(x, y, z)
     if h % 13 == 0: return cfg["moss"]
     if h % 4 == 0 or h % 7 == 0: return cfg["aged"]
     return default
 
 def weathered_stairs(x, y, z, cfg):
-    if cfg["aged"] and hash3(x, y, z) % 6 == 0: return cfg["moss_stairs"]
+    if cfg["decayed"] and hash3(x, y, z) % 6 == 0: return cfg["moss_stairs"]
     return cfg["stairs"]
 
 def segment_distance(px, pz, ax, az, bx, bz):
@@ -128,7 +128,7 @@ def pillar(px, pz, inward_x, inward_z, cfg):
     put(px, 2, pz + inward_z, weathered_stairs(px, 2, pz + inward_z, cfg), stair("south" if inward_z > 0 else "north"))
     put(px, 3, pz, weathered(px, 3, pz, cfg["accent"], cfg))
     put(px, 4, pz, cfg["marker"])
-    put(px, 5, pz, cfg["moss_wall"] if cfg["aged"] and hash3(px, 5, pz) % 2 == 0 else cfg["wall"])
+    put(px, 5, pz, cfg["moss_wall"] if cfg["decayed"] and hash3(px, 5, pz) % 2 == 0 else cfg["wall"])
     put(px + inward_x, 1, pz + inward_z, cfg["rune"], {"facing": radial_facing(-inward_x, -inward_z)})
 
 def pillars(cfg):
@@ -138,7 +138,7 @@ def pillars(cfg):
     pillar(9, 9, -1, -1, cfg)
 
 def add_mossy_decay(cfg):
-    if not cfg["aged"]: return
+    if not cfg["decayed"]: return
     missing = [
         (5, 2, 2), (8, 2, 5), (3, 2, 7),
         (5, 1, 1), (9, 1, 6), (2, 1, 7),
