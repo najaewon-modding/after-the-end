@@ -1,0 +1,151 @@
+name: Regenerate Basecamp Variants V6
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/regenerate-basecamp-variants-v6.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore classic rune family
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('tools/generate_basecamp_structure.py')
+          text = path.read_text(encoding='utf-8')
+
+          styles = {
+              'basecamp_red': 'classic_red',
+              'basecamp_orange': 'classic_orange',
+              'basecamp_yellow': 'classic_yellow',
+              'basecamp_lime': 'classic_lime',
+              'basecamp_green': 'classic_green',
+              'basecamp_cyan': 'classic_cyan',
+              'basecamp_light_blue': 'classic_light_blue',
+              'basecamp_blue': 'classic_blue',
+              'basecamp_purple': 'classic_purple',
+              'basecamp_white': 'classic_white',
+          }
+          for name, style in styles.items():
+              pattern = rf'(\"{name}\": \{{\*\*STONE, \"style\": \ ")[^\"]+(\".*)'
+              # tolerate the exact compact formatting currently used
+              old_line = next(line for line in text.splitlines() if f'\"{name}\"' in line)
+              new_line = re.sub(r'\"style\": \"[^\"]+\"', f'\"style\": \"{style}\"', old_line, count=1)
+              text = text.replace(old_line, new_line, 1)
+
+          replacement = '''def triangle_variant(dx, dz, apex_z, half_base, base_z, tolerance=0.38):
+              a, b, c = (0, apex_z), (-half_base, base_z), (half_base, base_z)
+              return min(segment_distance(dx, dz, *a, *b), segment_distance(dx, dz, *b, *c), segment_distance(dx, dz, *c, *a)) <= tolerance
+
+          CLASSIC_MOTIFS = {
+              "classic_red":        (-4.3, 3.8, 3.0, 2.15, 2.75, None),
+              "classic_orange":     (-4.1, 4.0, 2.9, 2.10, 2.70, (0, -3)),
+              "classic_yellow":     (-4.5, 3.6, 3.0, 2.20, 2.80, None),
+              "classic_lime":       (-4.2, 3.9, 2.8, 2.00, 2.65, (0, 3)),
+              "classic_green":      (-4.3, 3.6, 3.2, 2.15, 2.70, None),
+              "classic_cyan":       (-4.1, 4.1, 3.0, 2.25, 2.85, (0, -2)),
+              "classic_light_blue": (-4.4, 3.7, 2.8, 2.10, 2.75, None),
+              "classic_blue":       (-4.2, 3.8, 3.2, 2.20, 2.85, (0, 2)),
+              "classic_purple":     (-4.5, 4.0, 2.8, 2.05, 2.70, None),
+              "classic_white":      (-4.0, 3.6, 3.1, 2.20, 2.80, (0, -3)),
+          }
+
+          def pattern_block(dx, dz, r, cfg):
+              style = cfg["style"]
+              if 5.65 <= r <= 6.45:
+                  return cfg["outer"]
+              if style == "classic":
+                  if on_triangle(dx, dz): return cfg["primary"]
+                  if 2.15 <= r <= 2.75: return cfg["secondary"]
+              elif style in CLASSIC_MOTIFS:
+                  apex_z, half_base, base_z, inner_min, inner_max, detail = CLASSIC_MOTIFS[style]
+                  if triangle_variant(dx, dz, apex_z, half_base, base_z): return cfg["primary"]
+                  if inner_min <= r <= inner_max: return cfg["secondary"]
+                  if detail is not None:
+                      _, detail_z = detail
+                      if dx == 0 and dz == detail_z: return cfg["secondary"]
+              if r <= 1.15: return cfg["core"]
+              if dx == 0 and dz == 0: return cfg["rune"]
+              return None
+
+          def pattern_markers(style):
+              return [(0, -7), (5, -5), (7, 0), (5, 5), (0, 7), (-5, 5), (-7, 0), (-5, -5)]
+
+          def magic_altar'''
+
+          text, count = re.subn(r'def pattern_block\(.*?\n\ndef magic_altar', replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'Expected to replace one pattern section, replaced {count}')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Generate Basecamp variants
+        run: python tools/generate_basecamp_structure.py
+
+      - name: Validate generated structures
+        run: |
+          python - <<'PY'
+          import gzip
+          import importlib.util
+          import math
+          import os
+
+          spec = importlib.util.spec_from_file_location('basecamp_gen', 'tools/generate_basecamp_structure.py')
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+
+          candidates = [
+              'basecamp_red', 'basecamp_orange', 'basecamp_yellow', 'basecamp_lime',
+              'basecamp_green', 'basecamp_cyan', 'basecamp_light_blue', 'basecamp_blue',
+              'basecamp_purple', 'basecamp_white'
+          ]
+          ring = {(dx, dz) for dx in range(-7, 8) for dz in range(-7, 8) if 5.65 <= math.hypot(dx, dz) <= 6.45}
+          classic_cfg = mod.VARIANTS['basecamp_01']
+          classic_inner = {(dx, dz) for dx in range(-5, 6) for dz in range(-5, 6)
+                           if mod.pattern_block(dx, dz, math.hypot(dx, dz), classic_cfg) is not None}
+          for name in candidates:
+              cfg = mod.VARIANTS[name]
+              assert cfg['style'].startswith('classic_'), (name, cfg['style'])
+              for dx, dz in ring:
+                  assert mod.pattern_block(dx, dz, math.hypot(dx, dz), cfg) == cfg['outer'], (name, 'ring gap', dx, dz)
+              inner = {(dx, dz) for dx in range(-5, 6) for dz in range(-5, 6)
+                       if mod.pattern_block(dx, dz, math.hypot(dx, dz), cfg) is not None}
+              overlap = len(inner & classic_inner) / max(1, len(inner | classic_inner))
+              assert overlap >= 0.48, (name, 'too different from classic', overlap)
+              assert len(inner) >= 20, (name, 'inner pattern too sparse', len(inner))
+              print(name, 'classic overlap', round(overlap, 3), 'inner blocks', len(inner))
+
+          root = 'src/main/resources/data/njw_after_the_end/structure/basecamp'
+          for name in candidates + ['basecamp_01', 'basecamp_mossy']:
+              path = os.path.join(root, name + '.nbt')
+              assert os.path.isfile(path), path
+              with gzip.open(path, 'rb') as f: raw = f.read()
+              for token in (b'DataVersion', b'palette', b'blocks', b'entities'):
+                  assert token in raw, (name, token)
+          with gzip.open(os.path.join(root, 'basecamp_mossy.nbt'), 'rb') as f:
+              mossy = f.read()
+          for token in (b'mossy_stone_bricks', b'cracked_stone_bricks', b'cobweb'):
+              assert token in mossy, token
+          PY
+
+      - name: Commit generated variants
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/generate_basecamp_structure.py src/main/resources/data/njw_after_the_end/structure/basecamp/*.nbt
+          git rm .github/workflows/regenerate-basecamp-variants-v6.yml
+          git commit -m 'feat: restore classic basecamp rune variants'
+          git push
