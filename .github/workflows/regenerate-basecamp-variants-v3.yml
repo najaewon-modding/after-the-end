@@ -1,0 +1,58 @@
+name: Regenerate Basecamp Variants V3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/regenerate-basecamp-variants-v3.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Basecamp variants
+        run: python tools/generate_basecamp_structure.py
+
+      - name: Validate generated structures
+        run: |
+          python - <<'PY'
+          import gzip, os
+          root = 'src/main/resources/data/njw_after_the_end/structure/basecamp'
+          expected = [
+              'basecamp_01.nbt', 'basecamp_mossy.nbt',
+              'basecamp_red.nbt', 'basecamp_orange.nbt', 'basecamp_yellow.nbt', 'basecamp_lime.nbt',
+              'basecamp_green.nbt', 'basecamp_cyan.nbt', 'basecamp_light_blue.nbt', 'basecamp_blue.nbt',
+              'basecamp_purple.nbt', 'basecamp_white.nbt'
+          ]
+          for filename in expected:
+              path = os.path.join(root, filename)
+              assert os.path.isfile(path), path
+              with gzip.open(path, 'rb') as f: raw = f.read()
+              assert raw[:3] == b'\x0a\x00\x00', (filename, raw[:3])
+              for token in (b'DataVersion', b'palette', b'blocks', b'entities'):
+                  assert token in raw, (filename, token)
+              for forbidden in (b'black_glazed_terracotta', b'magenta_glazed_terracotta', b'deepslate'):
+                  assert forbidden not in raw, (filename, forbidden)
+          with gzip.open(os.path.join(root, 'basecamp_mossy.nbt'), 'rb') as f: mossy = f.read()
+          assert b'mossy_stone_bricks' in mossy
+          assert b'cracked_stone_bricks' in mossy
+          print('Validated', len(expected), 'basecamp templates')
+          PY
+
+      - name: Commit generated variants
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f --ignore-unmatch src/main/resources/data/njw_after_the_end/structure/basecamp/basecamp_deepslate.nbt
+          git add src/main/resources/data/njw_after_the_end/structure/basecamp/*.nbt
+          git rm .github/workflows/regenerate-basecamp-variants-v3.yml
+          git commit -m 'feat: add ten basecamp color candidates'
+          git push
