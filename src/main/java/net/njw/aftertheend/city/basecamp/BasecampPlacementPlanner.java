@@ -53,31 +53,16 @@ final class BasecampPlacementPlanner {
 
         List<ChunkEvaluation> evaluated = new ArrayList<>(sampledChunks.size());
         for (ChunkSeed chunk : sampledChunks) {
-            Site small = findBestSiteInChunk(level, chunk, SMALL, smallBounds, false);
-            Site large = hasLarge ? findBestSiteInChunk(level, chunk, LARGE, largeBounds, false) : null;
+            Site small = evaluateSiteInChunk(level, chunk, SMALL, smallBounds, false);
+            Site large = hasLarge ? evaluateSiteInChunk(level, chunk, LARGE, largeBounds, false) : null;
             evaluated.add(new ChunkEvaluation(chunk, small, large));
         }
 
-        List<ChunkEvaluation> usable = evaluated.stream().filter(candidate -> candidate.small() != null).toList();
-        boolean missingLargeCandidate = hasLarge && usable.stream().noneMatch(candidate -> candidate.large() != null);
-        if (usable.size() < count || missingLargeCandidate) {
-            AfterTheEnd.LOGGER.warn(
-                    "Basecamp planner {} found only {} sampled usable chunks for {} structures (largeCandidate={}); augmenting with guaranteed emergency candidates",
-                    cityId, usable.size(), count, !missingLargeCandidate
-            );
-            evaluated = augmentEmergencyCandidates(level, region, evaluated, hasLarge, count);
-            usable = evaluated.stream().filter(candidate -> candidate.small() != null).toList();
-        }
-        if (usable.size() < count) {
-            throw new IllegalStateException(
-                    "Basecamp planner could not obtain enough distinct city chunks even after emergency augmentation: "
-                            + usable.size() + " < " + count
-            );
-        }
-
+        // Every FPS chunk remains a candidate. Bad or unreadable terrain is represented only by a very large score;
+        // terrain quality never removes a chunk from the optimizer.
         double targetDistance = preferredDistance(region, count);
         SelectionResult selection = optimizeJointSelection(
-                usable,
+                evaluated,
                 count,
                 hasLarge,
                 targetDistance,
@@ -86,7 +71,7 @@ final class BasecampPlacementPlanner {
 
         List<ChosenSite> chosen = new ArrayList<>(count);
         for (int position = 0; position < selection.selected().length; position++) {
-            ChunkEvaluation candidate = usable.get(selection.selected()[position]);
+            ChunkEvaluation candidate = evaluated.get(selection.selected()[position]);
             boolean large = position == selection.largePosition();
             TemplateSize size = large ? LARGE : SMALL;
             SearchBounds bounds = large ? largeBounds : smallBounds;
@@ -108,7 +93,7 @@ final class BasecampPlacementPlanner {
         }
         result.sort(Comparator.comparingInt(Plan::specIndex));
 
-        writeDebugReport(cityId, seed, region, targetDistance, evaluated, selection, usable, result);
+        writeDebugReport(cityId, seed, region, targetDistance, evaluated, selection, result);
         AfterTheEnd.LOGGER.info(
                 "Basecamp planner {}: FPS candidates={}, structures={}, targetDistance={} blocks, objective={}",
                 cityId, sampledChunks.size(), count, format(targetDistance), format(selection.objective())
@@ -185,6 +170,22 @@ final class BasecampPlacementPlanner {
         return List.copyOf(result);
     }
 
+    private static Site evaluateSiteInChunk(
+            ServerLevel level,
+            ChunkSeed chunk,
+            TemplateSize size,
+            SearchBounds bounds,
+            boolean exhaustive
+    ) {
+        Site site = findBestSiteInChunk(level, chunk, size, bounds, exhaustive);
+        if (site != null) return site;
+        AfterTheEnd.LOGGER.debug(
+                "Basecamp candidate chunk ({}, {}) size={} could not be terrain-scored normally; assigning fallback score instead of removing candidate",
+                chunk.chunkX(), chunk.chunkZ(), size.width()
+        );
+        return emergencySiteInChunk(level, chunk, size, bounds);
+    }
+
     private static Site findBestSiteInChunk(
             ServerLevel level,
             ChunkSeed chunk,
@@ -244,35 +245,6 @@ final class BasecampPlacementPlanner {
         return new Site(x, z, terrain.score(), terrain);
     }
 
-    private static List<ChunkEvaluation> augmentEmergencyCandidates(
-            ServerLevel level,
-            CityRegion region,
-            List<ChunkEvaluation> existing,
-            boolean hasLarge,
-            int required
-    ) {
-        List<ChunkEvaluation> result = new ArrayList<>(existing);
-        Set<Long> seen = new HashSet<>();
-        for (ChunkEvaluation candidate : existing) seen.add(chunkKey(candidate.chunk().chunkX(), candidate.chunk().chunkZ()));
-        SearchBounds smallBounds = searchBounds(region, SMALL);
-        SearchBounds largeBounds = searchBounds(region, LARGE);
-        int usable = (int) result.stream().filter(candidate -> candidate.small() != null).count();
-        int sampleIndex = result.size();
-        for (int x = region.minChunkX(); x <= region.maxChunkX() && usable < required; x++) {
-            for (int z = region.minChunkZ(); z <= region.maxChunkZ() && usable < required; z++) {
-                if (!seen.add(chunkKey(x, z))) continue;
-                ChunkSeed chunk = new ChunkSeed(sampleIndex++, x, z);
-                Site small = findBestSiteInChunk(level, chunk, SMALL, smallBounds, false);
-                if (small == null) small = emergencySiteInChunk(level, chunk, SMALL, smallBounds);
-                Site large = hasLarge ? findBestSiteInChunk(level, chunk, LARGE, largeBounds, false) : null;
-                if (hasLarge && large == null) large = emergencySiteInChunk(level, chunk, LARGE, largeBounds);
-                result.add(new ChunkEvaluation(chunk, small, large));
-                usable++;
-            }
-        }
-        return result;
-    }
-
     private static SelectionResult optimizeJointSelection(
             List<ChunkEvaluation> candidates,
             int count,
@@ -281,6 +253,9 @@ final class BasecampPlacementPlanner {
             RandomSource random
     ) {
         int candidateCount = candidates.size();
+        if (candidateCount < count) {
+            throw new IllegalStateException("Basecamp FPS candidate count " + candidateCount + " is smaller than requested structure count " + count);
+        }
         SelectionResult globalBest = null;
         List<Double> restartObjectives = new ArrayList<>();
 
@@ -661,7 +636,6 @@ final class BasecampPlacementPlanner {
             double targetDistance,
             List<ChunkEvaluation> allCandidates,
             SelectionResult selection,
-            List<ChunkEvaluation> usable,
             List<Plan> plans
     ) {
         try {
@@ -670,7 +644,7 @@ final class BasecampPlacementPlanner {
             String safeCityId = cityId.replaceAll("[^A-Za-z0-9._-]", "_");
             Path path = directory.resolve(safeCityId + "-" + Long.toUnsignedString(seed, 16) + ".csv");
             Set<Integer> selectedSampleIndices = new HashSet<>();
-            for (int usableIndex : selection.selected()) selectedSampleIndices.add(usable.get(usableIndex).chunk().sampleIndex());
+            for (int candidateIndex : selection.selected()) selectedSampleIndices.add(allCandidates.get(candidateIndex).chunk().sampleIndex());
 
             StringBuilder out = new StringBuilder(64 * 1024);
             out.append("# cityId,").append(cityId).append('\n');
