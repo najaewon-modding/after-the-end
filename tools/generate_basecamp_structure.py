@@ -11,25 +11,32 @@ DATA_VERSION = 4790
 OUTPUT_DIR = "src/main/resources/data/njw_after_the_end/structure/basecamp"
 blocks = {}
 
+STONE = {
+    "base": "minecraft:stone_bricks",
+    "aged": "minecraft:cracked_stone_bricks",
+    "moss": "minecraft:mossy_stone_bricks",
+    "floor": "minecraft:smooth_stone",
+    "accent": "minecraft:polished_andesite",
+    "stairs": "minecraft:stone_brick_stairs",
+    "moss_stairs": "minecraft:mossy_stone_brick_stairs",
+    "marker": "minecraft:chiseled_stone_bricks",
+    "wall": "minecraft:stone_brick_wall",
+    "moss_wall": "minecraft:mossy_stone_brick_wall",
+}
+
 VARIANTS = {
-    "basecamp_01": {
-        "base": "minecraft:stone_bricks", "aged": "minecraft:cracked_stone_bricks", "moss": "minecraft:mossy_stone_bricks", "floor": "minecraft:smooth_stone", "accent": "minecraft:polished_andesite", "stairs": "minecraft:stone_brick_stairs", "marker": "minecraft:chiseled_stone_bricks", "wall": "minecraft:stone_brick_wall", "outer": "minecraft:light_gray_glazed_terracotta", "triangle": "minecraft:yellow_glazed_terracotta", "inner": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "moss_rate": 67,
-    },
-    "basecamp_mossy": {
-        "base": "minecraft:stone_bricks", "aged": "minecraft:cracked_stone_bricks", "moss": "minecraft:mossy_stone_bricks", "floor": "minecraft:smooth_stone", "accent": "minecraft:mossy_stone_bricks", "stairs": "minecraft:stone_brick_stairs", "marker": "minecraft:chiseled_stone_bricks", "wall": "minecraft:stone_brick_wall", "outer": "minecraft:light_gray_glazed_terracotta", "triangle": "minecraft:green_glazed_terracotta", "inner": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "moss_rate": 23,
-    },
-    "basecamp_deepslate": {
-        "base": "minecraft:deepslate_bricks", "aged": "minecraft:cracked_deepslate_bricks", "moss": "minecraft:cobbled_deepslate", "floor": "minecraft:smooth_stone", "accent": "minecraft:polished_andesite", "stairs": "minecraft:deepslate_brick_stairs", "marker": "minecraft:chiseled_deepslate", "wall": "minecraft:deepslate_brick_wall", "outer": "minecraft:light_gray_glazed_terracotta", "triangle": "minecraft:purple_glazed_terracotta", "inner": "minecraft:light_blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:blue_glazed_terracotta", "moss_rate": 17,
-    },
-    "basecamp_red": {
-        "base": "minecraft:stone_bricks", "aged": "minecraft:cracked_stone_bricks", "moss": "minecraft:mossy_stone_bricks", "floor": "minecraft:smooth_stone", "accent": "minecraft:polished_andesite", "stairs": "minecraft:stone_brick_stairs", "marker": "minecraft:chiseled_stone_bricks", "wall": "minecraft:stone_brick_wall", "outer": "minecraft:light_gray_glazed_terracotta", "triangle": "minecraft:red_glazed_terracotta", "inner": "minecraft:orange_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "moss_rate": 67,
-    },
-    "basecamp_green": {
-        "base": "minecraft:stone_bricks", "aged": "minecraft:cracked_stone_bricks", "moss": "minecraft:mossy_stone_bricks", "floor": "minecraft:smooth_stone", "accent": "minecraft:polished_andesite", "stairs": "minecraft:stone_brick_stairs", "marker": "minecraft:chiseled_stone_bricks", "wall": "minecraft:stone_brick_wall", "outer": "minecraft:light_gray_glazed_terracotta", "triangle": "minecraft:green_glazed_terracotta", "inner": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "moss_rate": 67,
-    },
-    "basecamp_purple": {
-        "base": "minecraft:stone_bricks", "aged": "minecraft:cracked_stone_bricks", "moss": "minecraft:mossy_stone_bricks", "floor": "minecraft:smooth_stone", "accent": "minecraft:polished_andesite", "stairs": "minecraft:stone_brick_stairs", "marker": "minecraft:chiseled_stone_bricks", "wall": "minecraft:stone_brick_wall", "outer": "minecraft:light_gray_glazed_terracotta", "triangle": "minecraft:purple_glazed_terracotta", "inner": "minecraft:light_blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:blue_glazed_terracotta", "moss_rate": 67,
-    },
+    "basecamp_01": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
+    "basecamp_mossy": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "aged_level": 2},
+    "basecamp_red": {**STONE, "style": "triad", "outer": "minecraft:red_glazed_terracotta", "primary": "minecraft:orange_glazed_terracotta", "secondary": "minecraft:yellow_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:red_glazed_terracotta", "aged_level": 0},
+    "basecamp_orange": {**STONE, "style": "sun", "outer": "minecraft:orange_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:light_gray_glazed_terracotta", "rune": "minecraft:orange_glazed_terracotta", "aged_level": 0},
+    "basecamp_yellow": {**STONE, "style": "diamond", "outer": "minecraft:yellow_glazed_terracotta", "primary": "minecraft:white_glazed_terracotta", "secondary": "minecraft:orange_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
+    "basecamp_lime": {**STONE, "style": "petal", "outer": "minecraft:lime_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:yellow_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "aged_level": 0},
+    "basecamp_green": {**STONE, "style": "cross", "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "aged_level": 0},
+    "basecamp_cyan": {**STONE, "style": "wave", "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "aged_level": 0},
+    "basecamp_light_blue": {**STONE, "style": "star", "outer": "minecraft:light_blue_glazed_terracotta", "primary": "minecraft:white_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "aged_level": 0},
+    "basecamp_blue": {**STONE, "style": "ring_cross", "outer": "minecraft:blue_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:blue_glazed_terracotta", "aged_level": 0},
+    "basecamp_purple": {**STONE, "style": "diamond_star", "outer": "minecraft:purple_glazed_terracotta", "primary": "minecraft:blue_glazed_terracotta", "secondary": "minecraft:light_blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:purple_glazed_terracotta", "aged_level": 0},
+    "basecamp_white": {**STONE, "style": "glyph", "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "aged_level": 0},
 }
 
 def put(x, y, z, name, properties=None, nbt=None):
@@ -39,30 +46,49 @@ def put(x, y, z, name, properties=None, nbt=None):
 def dist(x, z): return math.hypot(x - CENTER, z - CENTER)
 def stair(facing): return {"facing": facing, "half": "bottom", "shape": "straight", "waterlogged": "false"}
 def slab(): return {"type": "bottom", "waterlogged": "false"}
+
 def radial_facing(dx, dz):
     if abs(dx) >= abs(dz): return "east" if dx >= 0 else "west"
     return "south" if dz >= 0 else "north"
 
-def weathered(x, z, cfg):
-    v = (x * 31 + z * 17 + x * z * 5) % cfg["moss_rate"]
-    if v == 0: return cfg["moss"]
-    if v in (1, 2): return cfg["aged"]
-    return cfg["base"]
+def hash3(x, y, z): return abs(x * 37 + y * 53 + z * 19 + x * z * 3)
+
+def aged_surface(x, y, z, default, cfg):
+    level = cfg["aged_level"]
+    if level == 0: return default
+    h = hash3(x, y, z)
+    if level >= 2:
+        if h % 13 in (0, 1): return cfg["moss"]
+        if h % 7 in (0, 1): return cfg["aged"]
+    return default
+
+def aged_stairs(x, y, z, cfg):
+    if cfg["aged_level"] >= 2 and hash3(x, y, z) % 8 == 0: return cfg["moss_stairs"]
+    return cfg["stairs"]
+
+def aged_wall(x, y, z, cfg):
+    if cfg["aged_level"] >= 2 and hash3(x, y, z) % 5 == 0: return cfg["moss_wall"]
+    return cfg["wall"]
 
 def base_disc(cfg):
     for x in range(WIDTH):
         for z in range(DEPTH):
             dx, dz, r = x - CENTER, z - CENTER, dist(x, z)
-            if r <= 10.9: put(x, 0, z, weathered(x, z, cfg))
-            if r <= 9.25: put(x, 1, z, cfg["floor"] if (x + z) % 8 else cfg["accent"])
-            elif r <= 10.15: put(x, 1, z, cfg["stairs"], stair(radial_facing(dx, dz)))
-    for dx, dz in ((0, -9), (6, -6), (9, 0), (6, 6), (0, 9), (-6, 6), (-9, 0), (-6, -6)): put(CENTER + dx, 1, CENTER + dz, cfg["marker"])
+            if r <= 10.9: put(x, 0, z, aged_surface(x, 0, z, cfg["base"], cfg))
+            if r <= 9.25:
+                base = cfg["floor"] if (x + z) % 8 else cfg["accent"]
+                put(x, 1, z, aged_surface(x, 1, z, base, cfg))
+            elif r <= 10.15:
+                put(x, 1, z, aged_stairs(x, 1, z, cfg), stair(radial_facing(dx, dz)))
+    for dx, dz in ((0, -9), (6, -6), (9, 0), (6, 6), (0, 9), (-6, 6), (-9, 0), (-6, -6)):
+        put(CENTER + dx, 1, CENTER + dz, cfg["marker"])
 
 def approaches(cfg):
     for offset in (-1, 0, 1):
         for d in (10, 11, 12, 13):
-            for x, z in ((CENTER + offset, CENTER - d), (CENTER + offset, CENTER + d), (CENTER - d, CENTER + offset), (CENTER + d, CENTER + offset)): put(x, 0, z, cfg["base"])
-        put(CENTER + offset, 1, 1, cfg["floor"] if "slab" in cfg["floor"] else "minecraft:smooth_stone_slab", slab())
+            for x, z in ((CENTER + offset, CENTER - d), (CENTER + offset, CENTER + d), (CENTER - d, CENTER + offset), (CENTER + d, CENTER + offset)):
+                put(x, 0, z, aged_surface(x, 0, z, cfg["base"], cfg))
+        put(CENTER + offset, 1, 1, "minecraft:smooth_stone_slab", slab())
         put(CENTER + offset, 1, DEPTH - 2, "minecraft:smooth_stone_slab", slab())
         put(1, 1, CENTER + offset, "minecraft:smooth_stone_slab", slab())
         put(WIDTH - 2, 1, CENTER + offset, "minecraft:smooth_stone_slab", slab())
@@ -78,24 +104,81 @@ def on_triangle(dx, dz):
     a, b, c = (0, -4.3), (-3.8, 3.0), (3.8, 3.0)
     return min(segment_distance(dx, dz, *a, *b), segment_distance(dx, dz, *b, *c), segment_distance(dx, dz, *c, *a)) <= 0.38
 
+def outer_segment(dx, dz, r, style):
+    ring = 5.65 <= r <= 6.45
+    if not ring: return False
+    if style == "classic": return True
+    if style == "triad": return int((math.atan2(dz, dx) + math.pi) / (2 * math.pi) * 12) % 4 != 1
+    if style == "sun": return (abs(dx) + abs(dz)) % 2 == 0
+    if style == "diamond": return abs(dx) + abs(dz) in (8, 9)
+    if style == "petal": return abs(dx) <= 2 or abs(dz) <= 2
+    if style == "cross": return abs(abs(dx) - abs(dz)) <= 1
+    if style == "wave": return int((math.atan2(dz, dx) + math.pi) / (2 * math.pi) * 16) % 2 == 0
+    if style == "star": return abs(dx) <= 1 or abs(dz) <= 1 or abs(abs(dx) - abs(dz)) <= 1
+    if style == "ring_cross": return 5.9 <= r <= 6.3
+    if style == "diamond_star": return abs(dx) + abs(dz) in (8, 9)
+    if style == "glyph": return (abs(dx), abs(dz)) in ((0, 6), (6, 0), (4, 4), (3, 5), (5, 3))
+    return False
+
+def pattern_block(dx, dz, r, cfg):
+    style = cfg["style"]
+    if outer_segment(dx, dz, r, style): return cfg["outer"]
+    if style == "classic":
+        if on_triangle(dx, dz): return cfg["primary"]
+        if 2.15 <= r <= 2.75: return cfg["secondary"]
+    elif style == "triad":
+        if on_triangle(dx, dz): return cfg["primary"]
+        if (dx == 0 or dz == 0) and 1.8 <= r <= 4.5: return cfg["secondary"]
+    elif style == "sun":
+        if 2.0 <= r <= 5.1 and (dx == 0 or dz == 0 or abs(dx) == abs(dz)): return cfg["primary"]
+        if 2.0 <= r <= 2.8: return cfg["secondary"]
+    elif style == "diamond":
+        d = abs(dx) + abs(dz)
+        if d in (5, 6): return cfg["primary"]
+        if d in (2, 3): return cfg["secondary"]
+    elif style == "petal":
+        if 2.0 <= r <= 5.0 and ((abs(dx) <= 1 and abs(dz) >= 2) or (abs(dz) <= 1 and abs(dx) >= 2)): return cfg["primary"]
+        if 1.8 <= r <= 2.7: return cfg["secondary"]
+    elif style == "cross":
+        if 2.0 <= r <= 5.0 and (dx == 0 or dz == 0): return cfg["primary"]
+        if 2.0 <= r <= 4.0 and abs(dx) == abs(dz): return cfg["secondary"]
+    elif style == "wave":
+        sector = int((math.atan2(dz, dx) + math.pi) / (2 * math.pi) * 12)
+        if 3.0 <= r <= 5.0 and sector % 3 == 0: return cfg["primary"]
+        if 1.8 <= r <= 2.8: return cfg["secondary"]
+    elif style == "star":
+        if 2.0 <= r <= 5.0 and (dx == 0 or dz == 0 or abs(dx) == abs(dz)): return cfg["primary"]
+        if 1.4 <= r <= 2.3: return cfg["secondary"]
+    elif style == "ring_cross":
+        if 3.4 <= r <= 4.0: return cfg["primary"]
+        if 1.5 <= r <= 4.8 and (dx == 0 or dz == 0): return cfg["secondary"]
+    elif style == "diamond_star":
+        d = abs(dx) + abs(dz)
+        if d in (5, 6): return cfg["primary"]
+        if 1.8 <= r <= 4.2 and abs(dx) == abs(dz): return cfg["secondary"]
+    elif style == "glyph":
+        if (abs(dx), abs(dz)) in ((0, 4), (4, 0), (3, 3), (1, 5), (5, 1)): return cfg["primary"]
+        if 2.0 <= r <= 2.8: return cfg["secondary"]
+    if r <= 1.15: return cfg["core"]
+    if dx == 0 and dz == 0: return cfg["rune"]
+    return None
+
 def magic_altar(cfg):
     for x in range(CENTER - 7, CENTER + 8):
         for z in range(CENTER - 7, CENTER + 8):
             dx, dz, r = x - CENTER, z - CENTER, dist(x, z)
-            if 6.4 < r <= 7.15: put(x, 1, z, cfg["stairs"], stair(radial_facing(dx, dz)))
-            if r <= 6.45: put(x, 2, z, cfg["floor"])
+            if 6.4 < r <= 7.15: put(x, 1, z, aged_stairs(x, 1, z, cfg), stair(radial_facing(dx, dz)))
+            if r <= 6.45: put(x, 2, z, aged_surface(x, 2, z, cfg["floor"], cfg))
     for offset in (-1, 0, 1):
-        put(CENTER + offset, 2, CENTER - 7, cfg["stairs"], stair("south")); put(CENTER + offset, 2, CENTER + 7, cfg["stairs"], stair("north")); put(CENTER - 7, 2, CENTER + offset, cfg["stairs"], stair("east")); put(CENTER + 7, 2, CENTER + offset, cfg["stairs"], stair("west"))
+        put(CENTER + offset, 2, CENTER - 7, aged_stairs(CENTER + offset, 2, CENTER - 7, cfg), stair("south"))
+        put(CENTER + offset, 2, CENTER + 7, aged_stairs(CENTER + offset, 2, CENTER + 7, cfg), stair("north"))
+        put(CENTER - 7, 2, CENTER + offset, aged_stairs(CENTER - 7, 2, CENTER + offset, cfg), stair("east"))
+        put(CENTER + 7, 2, CENTER + offset, aged_stairs(CENTER + 7, 2, CENTER + offset, cfg), stair("west"))
     for x in range(CENTER - 7, CENTER + 8):
         for z in range(CENTER - 7, CENTER + 8):
             dx, dz, r = x - CENTER, z - CENTER, dist(x, z)
             if r > 6.75: continue
-            name = None
-            if 5.65 <= r <= 6.45: name = cfg["outer"]
-            if on_triangle(dx, dz): name = cfg["triangle"]
-            if 2.15 <= r <= 2.75: name = cfg["inner"]
-            if r <= 1.15: name = cfg["core"]
-            if dx == 0 and dz == 0: name = cfg["rune"]
+            name = pattern_block(dx, dz, r, cfg)
             if name: put(x, 2, z, name, {"facing": radial_facing(dx, dz)})
     for dx, dz in ((0, -7), (5, -5), (7, 0), (5, 5), (0, 7), (-5, 5), (-7, 0), (-5, -5)):
         put(CENTER + dx, 2, CENTER + dz, cfg["marker"])
@@ -106,61 +189,89 @@ def pillar(px, pz, inward_x, inward_z, cfg):
     for x in range(px - 2, px + 3):
         for z in range(pz - 2, pz + 3):
             if abs(x - px) == 2 and abs(z - pz) == 2: continue
-            put(x, 0, z, cfg["base"])
+            put(x, 0, z, aged_surface(x, 0, z, cfg["base"], cfg))
     for x in range(px - 1, px + 2):
         for z in range(pz - 1, pz + 2):
-            put(x, 1, z, cfg["accent"] if x == px and z == pz else cfg["base"]); put(x, 2, z, cfg["marker"] if x == px and z == pz else cfg["base"])
+            put(x, 1, z, aged_surface(x, 1, z, cfg["accent"] if x == px and z == pz else cfg["base"], cfg))
+            put(x, 2, z, cfg["marker"] if x == px and z == pz else aged_surface(x, 2, z, cfg["base"], cfg))
     for x in range(px - 1, px + 2):
         for z in range(pz - 1, pz + 2):
             if abs(x - px) == 1 and abs(z - pz) == 1: continue
-            put(x, 3, z, cfg["accent"])
-    for (x, z), facing in {(px, pz - 1): "north", (px + 1, pz): "east", (px, pz + 1): "south", (px - 1, pz): "west"}.items(): put(x, 4, z, cfg["stairs"], stair(facing))
-    put(px, 4, pz, cfg["marker"]); put(px, 5, pz, cfg["accent"]); put(px, 6, pz, cfg["marker"]); put(px, 7, pz, cfg["wall"])
+            put(x, 3, z, aged_surface(x, 3, z, cfg["accent"], cfg))
+    for (x, z), facing in {(px, pz - 1): "north", (px + 1, pz): "east", (px, pz + 1): "south", (px - 1, pz): "west"}.items():
+        put(x, 4, z, aged_stairs(x, 4, z, cfg), stair(facing))
+    put(px, 4, pz, cfg["marker"])
+    put(px, 5, pz, aged_surface(px, 5, pz, cfg["accent"], cfg))
+    put(px, 6, pz, cfg["marker"])
+    put(px, 7, pz, aged_wall(px, 7, pz, cfg))
     put(px + inward_x, 1, pz + inward_z, cfg["rune"], {"facing": radial_facing(-inward_x, -inward_z)})
 
 def pillars(cfg):
-    pillar(CENTER - 9, CENTER - 9, 1, 1, cfg); pillar(CENTER + 9, CENTER - 9, -1, 1, cfg); pillar(CENTER - 9, CENTER + 9, 1, -1, cfg); pillar(CENTER + 9, CENTER + 9, -1, -1, cfg)
+    pillar(CENTER - 9, CENTER - 9, 1, 1, cfg)
+    pillar(CENTER + 9, CENTER - 9, -1, 1, cfg)
+    pillar(CENTER - 9, CENTER + 9, 1, -1, cfg)
+    pillar(CENTER + 9, CENTER + 9, -1, -1, cfg)
 
 TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY, TAG_LONG_ARRAY = range(13)
+
 def utf8(value):
-    raw = value.encode("utf-8"); return struct.pack(">H", len(raw)) + raw
+    raw = value.encode("utf-8")
+    return struct.pack(">H", len(raw)) + raw
+
 def payload(tag_type, value):
     if tag_type == TAG_INT: return struct.pack(">i", value)
     if tag_type == TAG_STRING: return utf8(value)
     if tag_type == TAG_LIST:
-        child_type, values = value; return bytes([child_type]) + struct.pack(">i", len(values)) + b"".join(payload(child_type, item) for item in values)
+        child_type, values = value
+        return bytes([child_type]) + struct.pack(">i", len(values)) + b"".join(payload(child_type, item) for item in values)
     if tag_type == TAG_COMPOUND: return compound_payload(value)
     raise ValueError(f"Unsupported tag type: {tag_type}")
+
 def named(tag_type, name, value): return bytes([tag_type]) + utf8(name) + payload(tag_type, value)
+
 def compound_payload(values):
     out = bytearray()
     for name, (tag_type, value) in values.items(): out.extend(named(tag_type, name, value))
-    out.append(TAG_END); return bytes(out)
+    out.append(TAG_END)
+    return bytes(out)
+
 def palette_and_states():
     palette, index, state_for_pos = [], {}, {}
     for pos, (name, properties, nbt) in sorted(blocks.items(), key=lambda item: (item[0][1], item[0][2], item[0][0])):
         key = (name, tuple(sorted(properties.items())))
         if key not in index:
-            index[key] = len(palette); entry = OrderedDict(); entry["Name"] = (TAG_STRING, name)
+            index[key] = len(palette)
+            entry = OrderedDict()
+            entry["Name"] = (TAG_STRING, name)
             if properties: entry["Properties"] = (TAG_COMPOUND, OrderedDict((k, (TAG_STRING, v)) for k, v in sorted(properties.items())))
             palette.append(entry)
         state_for_pos[pos] = (index[key], nbt)
     return palette, state_for_pos
 
 def write_structure(name):
-    palette, states = palette_and_states(); block_entries = []
+    palette, states = palette_and_states()
+    block_entries = []
     for (x, y, z), (state, block_nbt) in sorted(states.items(), key=lambda item: (item[0][1], item[0][2], item[0][0])):
         entry = OrderedDict([("pos", (TAG_LIST, (TAG_INT, [x, y, z]))), ("state", (TAG_INT, state))])
         if block_nbt: entry["nbt"] = (TAG_COMPOUND, block_nbt)
         block_entries.append(entry)
     root = OrderedDict([("DataVersion", (TAG_INT, DATA_VERSION)), ("size", (TAG_LIST, (TAG_INT, [WIDTH, HEIGHT, DEPTH]))), ("palette", (TAG_LIST, (TAG_COMPOUND, palette))), ("blocks", (TAG_LIST, (TAG_COMPOUND, block_entries))), ("entities", (TAG_LIST, (TAG_COMPOUND, [])))])
-    raw = named(TAG_COMPOUND, "", root); os.makedirs(OUTPUT_DIR, exist_ok=True); output = os.path.join(OUTPUT_DIR, f"{name}.nbt")
+    raw = named(TAG_COMPOUND, "", root)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    output = os.path.join(OUTPUT_DIR, f"{name}.nbt")
     with open(output, "wb") as file:
         with gzip.GzipFile(fileobj=file, mode="wb", mtime=0) as zipped: zipped.write(raw)
-    print(f"Generated {output}: {len(block_entries)} blocks, {len(palette)} states, {os.path.getsize(output)} bytes")
+    print(f"Generated {name}: {len(block_entries)} blocks, {len(palette)} states, {os.path.getsize(output)} bytes")
+
+def generate(name, cfg):
+    blocks.clear()
+    base_disc(cfg)
+    approaches(cfg)
+    magic_altar(cfg)
+    pillars(cfg)
+    write_structure(name)
 
 def main():
-    for name, cfg in VARIANTS.items():
-        blocks.clear(); base_disc(cfg); approaches(cfg); magic_altar(cfg); pillars(cfg); write_structure(name)
+    for name, cfg in VARIANTS.items(): generate(name, cfg)
 
 if __name__ == "__main__": main()
