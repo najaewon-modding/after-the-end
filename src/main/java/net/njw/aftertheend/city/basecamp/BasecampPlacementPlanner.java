@@ -58,31 +58,47 @@ final class BasecampPlacementPlanner {
         List<ChunkEvaluation> evaluated = new ArrayList<>(sampledChunks.size());
         for (ChunkSeed chunk : sampledChunks) {
             Site small = evaluateSiteInChunk(level, chunk, SMALL, smallBounds, false, surfaceCache, missingSurfaceSamples);
-            Site large = hasLarge ? evaluateSiteInChunk(level, chunk, LARGE, largeBounds, false, surfaceCache, missingSurfaceSamples) : null;
-            evaluated.add(new ChunkEvaluation(chunk, small, large));
+            evaluated.add(new ChunkEvaluation(chunk, small));
         }
 
-        // Every FPS chunk remains a candidate. Bad or unreadable terrain is represented only by a very large score;
-        // terrain quality never removes a chunk from the optimizer.
+        // Candidate chunks are selected entirely from Small terrain scores and spacing. Large is evaluated only
+        // after the final N chunks are fixed, so the 256 FPS candidates never pay the Large evaluation cost.
         double targetDistance = preferredDistance(region, count);
         SelectionResult selection = optimizeJointSelection(
                 evaluated,
                 count,
-                hasLarge,
                 targetDistance,
                 RandomSource.create(mix(seed ^ 0x6a09e667f3bcc909L))
         );
 
+        int largePosition = -1;
+        Site bestLargeSite = null;
+        if (hasLarge) {
+            for (int position = 0; position < selection.selected().length; position++) {
+                ChunkEvaluation candidate = evaluated.get(selection.selected()[position]);
+                Site large = evaluateSiteInChunk(
+                        level, candidate.chunk(), LARGE, largeBounds, true, surfaceCache, missingSurfaceSamples
+                );
+                if (bestLargeSite == null || large.score() < bestLargeSite.score()) {
+                    bestLargeSite = large;
+                    largePosition = position;
+                }
+            }
+        }
+
         List<ChosenSite> chosen = new ArrayList<>(count);
         for (int position = 0; position < selection.selected().length; position++) {
             ChunkEvaluation candidate = evaluated.get(selection.selected()[position]);
-            boolean large = position == selection.largePosition();
-            TemplateSize size = large ? LARGE : SMALL;
-            SearchBounds bounds = large ? largeBounds : smallBounds;
-            Site refined = findBestSiteInChunk(level, candidate.chunk(), size, bounds, true, surfaceCache, missingSurfaceSamples);
-            if (refined == null) refined = large ? candidate.large() : candidate.small();
-            if (refined == null) refined = emergencySiteInChunk(level, candidate.chunk(), size, bounds);
-            chosen.add(new ChosenSite(candidate, refined, large));
+            if (position == largePosition) {
+                chosen.add(new ChosenSite(candidate, bestLargeSite, true));
+                continue;
+            }
+            Site refined = findBestSiteInChunk(
+                    level, candidate.chunk(), SMALL, smallBounds, true, surfaceCache, missingSurfaceSamples
+            );
+            if (refined == null) refined = candidate.small();
+            if (refined == null) refined = emergencySiteInChunk(level, candidate.chunk(), SMALL, smallBounds);
+            chosen.add(new ChosenSite(candidate, refined, false));
         }
 
         List<Request> smallRequests = requests.stream().filter(request -> !request.large()).sorted(Comparator.comparingInt(Request::specIndex)).toList();
@@ -256,7 +272,6 @@ final class BasecampPlacementPlanner {
     private static SelectionResult optimizeJointSelection(
             List<ChunkEvaluation> candidates,
             int count,
-            boolean hasLarge,
             double targetDistance,
             RandomSource random
     ) {
@@ -269,21 +284,21 @@ final class BasecampPlacementPlanner {
 
         for (int restart = 0; restart < OPTIMIZER_RESTARTS; restart++) {
             int[] selected = restart == 0
-                    ? bestTerrainInitialization(candidates, count, hasLarge)
+                    ? bestTerrainInitialization(candidates, count)
                     : randomInitialization(candidateCount, count, random);
-            SelectionResult local = improveByJointSwaps(selected, candidates, hasLarge, targetDistance);
+            SelectionResult local = improveByJointSwaps(selected, candidates, targetDistance);
             restartObjectives.add(local.objective());
             if (globalBest == null || local.objective() < globalBest.objective()) globalBest = local;
         }
 
         if (globalBest == null) {
-            int[] selected = bestTerrainInitialization(candidates, count, hasLarge);
-            globalBest = evaluateSelection(selected, candidates, hasLarge, targetDistance);
+            int[] selected = bestTerrainInitialization(candidates, count);
+            globalBest = evaluateSelection(selected, candidates, targetDistance);
         }
-        return new SelectionResult(globalBest.selected(), globalBest.objective(), globalBest.largePosition(), List.copyOf(restartObjectives));
+        return new SelectionResult(globalBest.selected(), globalBest.objective(), List.copyOf(restartObjectives));
     }
 
-    private static int[] bestTerrainInitialization(List<ChunkEvaluation> candidates, int count, boolean hasLarge) {
+    private static int[] bestTerrainInitialization(List<ChunkEvaluation> candidates, int count) {
         if (candidates.size() < count) {
             throw new IllegalStateException("Basecamp optimizer requires at least " + count + " candidates, got " + candidates.size());
         }
@@ -292,19 +307,6 @@ final class BasecampPlacementPlanner {
         Arrays.sort(order, Comparator.comparingDouble(i -> candidates.get(i).small().score()));
         int[] selected = new int[count];
         for (int i = 0; i < count; i++) selected[i] = order[i];
-
-        if (hasLarge && Arrays.stream(selected).noneMatch(index -> candidates.get(index).large() != null)) {
-            int bestLarge = -1;
-            double bestLargeScore = Double.POSITIVE_INFINITY;
-            for (int i = 0; i < candidates.size(); i++) {
-                Site large = candidates.get(i).large();
-                if (large != null && large.score() < bestLargeScore) {
-                    bestLarge = i;
-                    bestLargeScore = large.score();
-                }
-            }
-            if (bestLarge >= 0) selected[count - 1] = bestLarge;
-        }
         return selected;
     }
 
@@ -326,11 +328,10 @@ final class BasecampPlacementPlanner {
     private static SelectionResult improveByJointSwaps(
             int[] initial,
             List<ChunkEvaluation> candidates,
-            boolean hasLarge,
             double targetDistance
     ) {
         int[] current = Arrays.copyOf(initial, initial.length);
-        SelectionResult currentScore = evaluateSelection(current, candidates, hasLarge, targetDistance);
+        SelectionResult currentScore = evaluateSelection(current, candidates, targetDistance);
 
         for (int pass = 0; pass < OPTIMIZER_MAX_PASSES; pass++) {
             boolean[] chosen = new boolean[candidates.size()];
@@ -345,7 +346,7 @@ final class BasecampPlacementPlanner {
                 for (int candidate = 0; candidate < candidates.size(); candidate++) {
                     if (chosen[candidate]) continue;
                     current[slot] = candidate;
-                    SelectionResult score = evaluateSelection(current, candidates, hasLarge, targetDistance);
+                    SelectionResult score = evaluateSelection(current, candidates, targetDistance);
                     if (score.objective() + 1.0e-9 < bestObjective) {
                         bestObjective = score.objective();
                         bestSlot = slot;
@@ -358,7 +359,7 @@ final class BasecampPlacementPlanner {
 
             if (bestSlot < 0) break;
             current[bestSlot] = bestCandidate;
-            currentScore = new SelectionResult(Arrays.copyOf(current, current.length), bestScore.objective(), bestScore.largePosition(), List.of());
+            currentScore = new SelectionResult(Arrays.copyOf(current, current.length), bestScore.objective(), List.of());
         }
         return currentScore;
     }
@@ -366,65 +367,46 @@ final class BasecampPlacementPlanner {
     private static SelectionResult evaluateSelection(
             int[] selected,
             List<ChunkEvaluation> candidates,
-            boolean hasLarge,
             double targetDistance
     ) {
-        double bestObjective = Double.POSITIVE_INFINITY;
-        int bestLargePosition = -1;
-        int start = hasLarge ? 0 : -1;
-        int end = hasLarge ? selected.length : 0;
-
-        for (int largePosition = start; largePosition < end; largePosition++) {
-            if (largePosition >= 0 && candidates.get(selected[largePosition]).large() == null) continue;
-            double terrain = 0.0;
-            Site[] sites = new Site[selected.length];
-            boolean valid = true;
-            for (int i = 0; i < selected.length; i++) {
-                ChunkEvaluation candidate = candidates.get(selected[i]);
-                Site site = i == largePosition ? candidate.large() : candidate.small();
-                if (site == null) {
-                    valid = false;
-                    break;
-                }
-                sites[i] = site;
-                terrain += site.score();
+        double terrain = 0.0;
+        Site[] sites = new Site[selected.length];
+        for (int i = 0; i < selected.length; i++) {
+            Site site = candidates.get(selected[i]).small();
+            if (site == null) {
+                return new SelectionResult(Arrays.copyOf(selected, selected.length), Double.POSITIVE_INFINITY, List.of());
             }
-            if (!valid) continue;
+            sites[i] = site;
+            terrain += site.score();
+        }
 
-            double pairPenalty = 0.0;
-            double minDistance = Double.POSITIVE_INFINITY;
-            double distanceSum = 0.0;
-            int pairCount = 0;
-            for (int i = 0; i < sites.length; i++) {
-                for (int j = i + 1; j < sites.length; j++) {
-                    int halfI = i == largePosition ? LARGE.width() / 2 : SMALL.width() / 2;
-                    int halfJ = j == largePosition ? LARGE.width() / 2 : SMALL.width() / 2;
-                    if (overlaps(sites[i], halfI, sites[j], halfJ)) pairPenalty += OVERLAP_PENALTY;
-                    double distance = distance(sites[i].centerX(), sites[i].centerZ(), sites[j].centerX(), sites[j].centerZ());
-                    minDistance = Math.min(minDistance, distance);
-                    distanceSum += distance;
-                    pairCount++;
-                    double normalized = distance / Math.max(1.0, targetDistance);
-                    pairPenalty += PAIR_DISTANCE_WEIGHT / (0.20 + normalized * normalized);
-                }
-            }
-
-            double minPenalty = 0.0;
-            double averageReward = 0.0;
-            if (pairCount > 0) {
-                double shortfall = Math.max(0.0, 1.0 - minDistance / Math.max(1.0, targetDistance));
-                minPenalty = MIN_DISTANCE_WEIGHT * shortfall * shortfall;
-                double averageDistance = distanceSum / pairCount;
-                averageReward = AVERAGE_DISTANCE_REWARD * averageDistance / Math.max(1.0, targetDistance);
-            }
-            double objective = terrain + pairPenalty + minPenalty - averageReward;
-            if (objective < bestObjective) {
-                bestObjective = objective;
-                bestLargePosition = largePosition;
+        double pairPenalty = 0.0;
+        double minDistance = Double.POSITIVE_INFINITY;
+        double distanceSum = 0.0;
+        int pairCount = 0;
+        int half = SMALL.width() / 2;
+        for (int i = 0; i < sites.length; i++) {
+            for (int j = i + 1; j < sites.length; j++) {
+                if (overlaps(sites[i], half, sites[j], half)) pairPenalty += OVERLAP_PENALTY;
+                double distance = distance(sites[i].centerX(), sites[i].centerZ(), sites[j].centerX(), sites[j].centerZ());
+                minDistance = Math.min(minDistance, distance);
+                distanceSum += distance;
+                pairCount++;
+                double normalized = distance / Math.max(1.0, targetDistance);
+                pairPenalty += PAIR_DISTANCE_WEIGHT / (0.20 + normalized * normalized);
             }
         }
 
-        return new SelectionResult(Arrays.copyOf(selected, selected.length), bestObjective, bestLargePosition, List.of());
+        double minPenalty = 0.0;
+        double averageReward = 0.0;
+        if (pairCount > 0) {
+            double shortfall = Math.max(0.0, 1.0 - minDistance / Math.max(1.0, targetDistance));
+            minPenalty = MIN_DISTANCE_WEIGHT * shortfall * shortfall;
+            double averageDistance = distanceSum / pairCount;
+            averageReward = AVERAGE_DISTANCE_REWARD * averageDistance / Math.max(1.0, targetDistance);
+        }
+        double objective = terrain + pairPenalty + minPenalty - averageReward;
+        return new SelectionResult(Arrays.copyOf(selected, selected.length), objective, List.of());
     }
 
     private static boolean overlaps(Site a, int halfA, Site b, int halfB) {
@@ -693,9 +675,6 @@ final class BasecampPlacementPlanner {
 
             for (ChunkEvaluation candidate : allCandidates) {
                 appendSiteCsv(out, "candidate", candidate.chunk(), "small", candidate.small(), selectedSampleIndices.contains(candidate.chunk().sampleIndex()), "");
-                if (candidate.large() != null) {
-                    appendSiteCsv(out, "candidate", candidate.chunk(), "large", candidate.large(), selectedSampleIndices.contains(candidate.chunk().sampleIndex()), "");
-                }
             }
             for (Plan plan : plans) {
                 out.append("final,").append(plan.sampleIndex()).append(',').append(plan.chunkX()).append(',').append(plan.chunkZ()).append(',')
@@ -764,8 +743,8 @@ final class BasecampPlacementPlanner {
     private record TerrainAssessment(int targetSurfaceY, double score, double roughness, double buriedFraction,
                                      double floatingFraction, double submergedFraction) { }
     private record Site(int centerX, int centerZ, double score, TerrainAssessment terrain) { }
-    private record ChunkEvaluation(ChunkSeed chunk, Site small, Site large) { }
+    private record ChunkEvaluation(ChunkSeed chunk, Site small) { }
     private record ChosenSite(ChunkEvaluation candidate, Site site, boolean large) { }
     private record SearchBounds(int minCenterX, int maxCenterX, int minCenterZ, int maxCenterZ) { }
-    private record SelectionResult(int[] selected, double objective, int largePosition, List<Double> restartObjectives) { }
+    private record SelectionResult(int[] selected, double objective, List<Double> restartObjectives) { }
 }
