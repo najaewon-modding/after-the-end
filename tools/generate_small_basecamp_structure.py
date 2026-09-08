@@ -26,10 +26,15 @@ STONE = {
 
 VARIANTS = {
     "basecamp_small_01": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "decayed": False},
+    "basecamp_small_01_ruined": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "decayed": True},
+    "basecamp_small_mossy_clean": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": False},
     "basecamp_small_mossy": {**STONE, "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": True},
     "basecamp_small_cyan": {**STONE, "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "decayed": False},
+    "basecamp_small_cyan_ruined": {**STONE, "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "decayed": True},
     "basecamp_small_green": {**STONE, "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": False},
+    "basecamp_small_green_ruined": {**STONE, "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "decayed": True},
     "basecamp_small_white": {**STONE, "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "decayed": False},
+    "basecamp_small_white_ruined": {**STONE, "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "decayed": True},
 }
 
 def put(x, y, z, name, properties=None, nbt=None):
@@ -137,7 +142,7 @@ def pillars(cfg):
     pillar(1, 9, 1, -1, cfg)
     pillar(9, 9, -1, -1, cfg)
 
-def add_mossy_decay(cfg):
+def add_ruin_decay(cfg):
     if not cfg["decayed"]: return
     missing = [
         (5, 2, 2), (8, 2, 5), (3, 2, 7),
@@ -215,7 +220,7 @@ def generate(name, cfg):
     base_disc(cfg)
     magic_altar(cfg)
     pillars(cfg)
-    add_mossy_decay(cfg)
+    add_ruin_decay(cfg)
     write_structure(name)
 
 def main():
