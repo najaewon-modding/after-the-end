@@ -91,6 +91,8 @@ def central_altar():
             if name: put(x, 3, z, name, {"facing": facing})
     for dx, dz in ((0, -6), (4, -4), (6, 0), (4, 4), (0, 6), (-4, 4), (-6, 0), (-4, -4)):
         put(CENTER + dx, 3, CENTER + dz, "minecraft:chiseled_stone_bricks")
+    for dx, dz in ((0, -5), (4, -3), (5, 0), (4, 3), (0, 5), (-4, 3), (-5, 0), (-4, -3)):
+        put(CENTER + dx, 3, CENTER + dz, "minecraft:light_gray_glazed_terracotta", {"facing": radial_facing(dx, dz)})
 
 def pillar(px, pz, inward_x, inward_z):
     for x in range(px - 2, px + 3):
