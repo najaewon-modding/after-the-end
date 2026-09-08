@@ -17,15 +17,21 @@ import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityRegion;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class BasecampPlacementService {
-    private static final int PREFERRED_CANDIDATE_ATTEMPTS = 96;
+    private static final int CANDIDATE_GRID_AXIS = 8;
+    private static final int REFINED_CANDIDATE_COUNT = 10;
+    private static final int FALLBACK_GRID_AXIS = 20;
     private static final int CITY_EDGE_MARGIN = 8;
     private static final int PREFERRED_BASECAMP_DISTANCE = 160;
+    private static final int PREFERRED_EDGE_DISTANCE = 64;
     private static final int MIN_STRUCTURE_GAP = 12;
-    private static final int PREFERRED_MAX_SURFACE_DELTA = 3;
-    private static final double PREFERRED_MAX_FLOATING_FRACTION = 0.25;
+    private static final int MAX_TERRAIN_TRIM_DEPTH = 2;
+    private static final int FEATHER_TRIM_DEPTH = 1;
     private static final int TREE_CLEAR_MARGIN = 4;
     private static final int TREE_CLEAR_EXTRA_HEIGHT = 24;
 
@@ -40,8 +46,7 @@ public final class BasecampPlacementService {
             new ColorVariant("white", "white", "white_ruined")
     );
 
-    private BasecampPlacementService() {
-    }
+    private BasecampPlacementService() { }
 
     public static List<BasecampPlacement> ensureGenerated(MinecraftServer server, City city) {
         if (BasecampManager.isGenerated(server, city.id())) return BasecampManager.getPlacements(server, city.id());
@@ -52,12 +57,12 @@ public final class BasecampPlacementService {
         );
         if (level == null) throw new IllegalStateException("Overworld is not available for Basecamp generation.");
 
-        RandomSource random = RandomSource.create(citySeed(level.getSeed(), city.id()));
+        long seed = citySeed(level.getSeed(), city.id());
+        RandomSource random = RandomSource.create(seed);
         int count = rollBasecampCount(random);
         int largeIndex = random.nextDouble() < count * 0.10 ? random.nextInt(count) : -1;
 
-        List<PlannedBasecamp> plans = new ArrayList<>(count);
-        List<PlacedFootprint> reserved = new ArrayList<>(count);
+        List<BasecampSpec> specs = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
             boolean large = index == largeIndex;
             boolean ruined = random.nextDouble() < 0.10;
@@ -69,36 +74,48 @@ public final class BasecampPlacementService {
             StructureTemplate template = server.getStructureManager().get(templateId).orElseThrow(
                     () -> new IllegalStateException("Missing Basecamp structure template: " + templateId)
             );
-
-            PlacementCandidate candidate = findCandidate(level, region, size, reserved, random);
-            reserved.add(new PlacedFootprint(candidate.centerX(), candidate.centerZ(), size.width() / 2));
-            plans.add(new PlannedBasecamp(templateId, template, size, color.id(), large, ruined, candidate));
+            specs.add(new BasecampSpec(index, templateId, template, size, color.id(), large, ruined));
         }
 
+        List<BasecampSpec> placementOrder = new ArrayList<>(specs);
+        placementOrder.sort(Comparator.comparing(BasecampSpec::large).reversed().thenComparingInt(BasecampSpec::index));
+
+        SearchBounds commonBounds = searchBounds(region, LARGE);
+        List<CandidatePoint> candidatePool = buildCandidatePool(
+                commonBounds,
+                RandomSource.create(citySeed(seed, city.id() + "|candidate-pool"))
+        );
+
+        List<PlacedFootprint> reserved = new ArrayList<>(count);
+        List<PlannedBasecamp> plans = new ArrayList<>(count);
+        for (BasecampSpec spec : placementOrder) {
+            PlacementCandidate candidate = findBestCandidate(level, region, spec.size(), reserved, candidatePool);
+            reserved.add(new PlacedFootprint(candidate.centerX(), candidate.centerZ(), spec.size().width() / 2));
+            plans.add(new PlannedBasecamp(spec, candidate));
+        }
+        plans.sort(Comparator.comparingInt(plan -> plan.spec().index()));
+
         List<BasecampPlacement> placements = new ArrayList<>(plans.size());
-        for (int index = 0; index < plans.size(); index++) {
-            PlannedBasecamp plan = plans.get(index);
-            clearTreesAndVegetation(level, plan.candidate(), plan.size());
-            BlockPos origin = new BlockPos(plan.candidate().originX(), plan.candidate().originY(), plan.candidate().originZ());
-            boolean placed = plan.template().placeInWorld(
+        for (PlannedBasecamp plan : plans) {
+            BasecampSpec spec = plan.spec();
+            PlacementCandidate candidate = plan.candidate();
+            clearTreesAndVegetation(level, candidate, spec.size());
+            trimTerrain(level, candidate, spec.size());
+
+            BlockPos origin = new BlockPos(candidate.originX(), candidate.originY(), candidate.originZ());
+            boolean placed = spec.template().placeInWorld(
                     level,
                     origin,
                     origin,
                     new StructurePlaceSettings(),
-                    RandomSource.create(citySeed(level.getSeed() ^ index, city.id() + "|" + plan.templateId())),
+                    RandomSource.create(citySeed(seed ^ spec.index(), city.id() + "|" + spec.templateId())),
                     3
             );
-            if (!placed) throw new IllegalStateException("Failed to place Basecamp template " + plan.templateId() + " for city " + city.id());
+            if (!placed) throw new IllegalStateException("Failed to place Basecamp template " + spec.templateId() + " for city " + city.id());
 
             placements.add(new BasecampPlacement(
-                    city.id(),
-                    plan.templateId().toString(),
-                    origin.getX(),
-                    origin.getY(),
-                    origin.getZ(),
-                    plan.large(),
-                    plan.ruined(),
-                    plan.color()
+                    city.id(), spec.templateId().toString(), origin.getX(), origin.getY(), origin.getZ(),
+                    spec.large(), spec.ruined(), spec.color()
             ));
         }
 
@@ -122,43 +139,133 @@ public final class BasecampPlacementService {
         return 8;
     }
 
-    private static PlacementCandidate findCandidate(
+    private static List<CandidatePoint> buildCandidatePool(SearchBounds bounds, RandomSource random) {
+        List<CandidatePoint> result = new ArrayList<>(CANDIDATE_GRID_AXIS * CANDIDATE_GRID_AXIS + 1);
+        Set<Long> seen = new HashSet<>();
+        for (int gx = 0; gx < CANDIDATE_GRID_AXIS; gx++) {
+            int minX = cellBoundary(bounds.minCenterX(), bounds.maxCenterX(), gx, CANDIDATE_GRID_AXIS);
+            int maxX = cellBoundary(bounds.minCenterX(), bounds.maxCenterX(), gx + 1, CANDIDATE_GRID_AXIS);
+            for (int gz = 0; gz < CANDIDATE_GRID_AXIS; gz++) {
+                int minZ = cellBoundary(bounds.minCenterZ(), bounds.maxCenterZ(), gz, CANDIDATE_GRID_AXIS);
+                int maxZ = cellBoundary(bounds.minCenterZ(), bounds.maxCenterZ(), gz + 1, CANDIDATE_GRID_AXIS);
+                int x = randomInclusive(random, minX, Math.max(minX, maxX));
+                int z = randomInclusive(random, minZ, Math.max(minZ, maxZ));
+                addCandidate(result, seen, x, z);
+            }
+        }
+        addCandidate(result, seen,
+                (bounds.minCenterX() + bounds.maxCenterX()) / 2,
+                (bounds.minCenterZ() + bounds.maxCenterZ()) / 2);
+        return List.copyOf(result);
+    }
+
+    private static int cellBoundary(int min, int max, int index, int cells) {
+        if (index <= 0) return min;
+        if (index >= cells) return max;
+        return min + (int) Math.round((max - (double) min) * index / cells);
+    }
+
+    private static int randomInclusive(RandomSource random, int min, int max) {
+        if (min >= max) return min;
+        return random.nextInt(min, max + 1);
+    }
+
+    private static void addCandidate(List<CandidatePoint> result, Set<Long> seen, int x, int z) {
+        long key = ((long) x << 32) ^ (z & 0xffffffffL);
+        if (seen.add(key)) result.add(new CandidatePoint(x, z));
+    }
+
+    private static PlacementCandidate findBestCandidate(
             ServerLevel level,
             CityRegion region,
             TemplateSize size,
             List<PlacedFootprint> reserved,
-            RandomSource random
+            List<CandidatePoint> candidatePool
     ) {
         SearchBounds bounds = searchBounds(region, size);
-        ScoredCandidate best = null;
+        List<ScoredCandidate> coarse = new ArrayList<>();
 
-        for (int attempt = 0; attempt < PREFERRED_CANDIDATE_ATTEMPTS; attempt++) {
-            int centerX = random.nextInt(bounds.minCenterX(), bounds.maxCenterX() + 1);
-            int centerZ = random.nextInt(bounds.minCenterZ(), bounds.maxCenterZ() + 1);
-            if (!hasStructuralClearance(centerX, centerZ, size, reserved, MIN_STRUCTURE_GAP)) continue;
-
-            int originX = centerX - size.width() / 2;
-            int originZ = centerZ - size.width() / 2;
-            TerrainProfile terrain = inspectSampledTerrain(level, originX, originZ, size.width());
+        for (CandidatePoint point : candidatePool) {
+            if (!bounds.contains(point.x(), point.z())) continue;
+            if (!hasStructuralClearance(point.x(), point.z(), size, reserved, MIN_STRUCTURE_GAP)) continue;
+            TerrainAssessment terrain = assessTerrain(level, point.x(), point.z(), size, true);
             if (terrain == null) continue;
+            coarse.add(scoreCandidate(bounds, point.x(), point.z(), terrain, reserved));
+        }
 
-            double nearestDistance = nearestBasecampDistance(centerX, centerZ, reserved);
-            double score = terrain.score() + spacingPenalty(nearestDistance);
-            ScoredCandidate scored = new ScoredCandidate(centerX, centerZ, score, terrain.preferred());
-            if (best == null || scored.score() < best.score()) best = scored;
-
-            if (terrain.preferred() && nearestDistance >= PREFERRED_BASECAMP_DISTANCE) {
-                return finalizeCandidate(level, size, centerX, centerZ);
-            }
+        coarse.sort(Comparator.comparingDouble(ScoredCandidate::score));
+        ScoredCandidate best = null;
+        int refinementCount = Math.min(REFINED_CANDIDATE_COUNT, coarse.size());
+        for (int i = 0; i < refinementCount; i++) {
+            ScoredCandidate candidate = coarse.get(i);
+            TerrainAssessment terrain = assessTerrain(level, candidate.centerX(), candidate.centerZ(), size, false);
+            if (terrain == null) continue;
+            ScoredCandidate refined = scoreCandidate(bounds, candidate.centerX(), candidate.centerZ(), terrain, reserved);
+            if (best == null || refined.score() < best.score()) best = refined;
         }
 
         if (best == null) best = findGuaranteedFallback(level, bounds, size, reserved);
-        PlacementCandidate fallback = finalizeCandidate(level, size, best.centerX(), best.centerZ());
-        AfterTheEnd.LOGGER.warn(
-                "Using relaxed Basecamp terrain for {}x{} template at ({}, {}), score={}",
-                size.width(), size.width(), fallback.centerX(), fallback.centerZ(), String.format("%.2f", best.score())
+        int half = size.width() / 2;
+        int targetSurfaceY = best.terrain().targetSurfaceY();
+        int originY = Math.max(level.getMinY(), Math.min(level.getMaxY() - size.height() + 1, targetSurfaceY - 1));
+        PlacementCandidate result = new PlacementCandidate(
+                best.centerX(), best.centerZ(), best.centerX() - half, originY, best.centerZ() - half,
+                originY + 1, best.score()
         );
-        return fallback;
+        AfterTheEnd.LOGGER.debug(
+                "Selected Basecamp terrain: size={}x{}, center=({}, {}), surfaceY={}, score={}",
+                size.width(), size.width(), result.centerX(), result.centerZ(), result.targetSurfaceY(),
+                String.format("%.2f", result.score())
+        );
+        return result;
+    }
+
+    private static ScoredCandidate findGuaranteedFallback(
+            ServerLevel level,
+            SearchBounds bounds,
+            TemplateSize size,
+            List<PlacedFootprint> reserved
+    ) {
+        ScoredCandidate best = null;
+        for (int gx = 0; gx < FALLBACK_GRID_AXIS; gx++) {
+            int centerX = interpolate(bounds.minCenterX(), bounds.maxCenterX(), gx, FALLBACK_GRID_AXIS);
+            for (int gz = 0; gz < FALLBACK_GRID_AXIS; gz++) {
+                int centerZ = interpolate(bounds.minCenterZ(), bounds.maxCenterZ(), gz, FALLBACK_GRID_AXIS);
+                if (!hasStructuralClearance(centerX, centerZ, size, reserved, 0)) continue;
+                TerrainAssessment terrain = assessTerrain(level, centerX, centerZ, size, true);
+                if (terrain == null) continue;
+                ScoredCandidate scored = scoreCandidate(bounds, centerX, centerZ, terrain, reserved);
+                if (best == null || scored.score() < best.score()) best = scored;
+            }
+        }
+        if (best == null) {
+            throw new IllegalStateException("City region cannot physically fit all required Basecamp structures without overlap.");
+        }
+        TerrainAssessment full = assessTerrain(level, best.centerX(), best.centerZ(), size, false);
+        if (full != null) best = scoreCandidate(bounds, best.centerX(), best.centerZ(), full, reserved);
+        AfterTheEnd.LOGGER.warn(
+                "Basecamp used guaranteed fallback at ({}, {}), size={}x{}, score={}",
+                best.centerX(), best.centerZ(), size.width(), size.width(), String.format("%.2f", best.score())
+        );
+        return best;
+    }
+
+    private static int interpolate(int min, int max, int index, int count) {
+        if (count <= 1 || min == max) return min;
+        return min + (int) Math.round((max - (double) min) * index / (count - 1.0));
+    }
+
+    private static ScoredCandidate scoreCandidate(
+            SearchBounds bounds,
+            int centerX,
+            int centerZ,
+            TerrainAssessment terrain,
+            List<PlacedFootprint> reserved
+    ) {
+        double score = terrain.score()
+                + spacingPenalty(nearestBasecampDistance(centerX, centerZ, reserved))
+                + edgePenalty(bounds, centerX, centerZ);
+        return new ScoredCandidate(centerX, centerZ, score, terrain);
     }
 
     private static SearchBounds searchBounds(CityRegion region, TemplateSize size) {
@@ -171,48 +278,6 @@ public final class BasecampPlacementService {
             throw new IllegalStateException("City region is physically too small for a Basecamp template.");
         }
         return new SearchBounds(minCenterX, maxCenterX, minCenterZ, maxCenterZ);
-    }
-
-    private static ScoredCandidate findGuaranteedFallback(
-            ServerLevel level,
-            SearchBounds bounds,
-            TemplateSize size,
-            List<PlacedFootprint> reserved
-    ) {
-        ScoredCandidate best = null;
-        int steps = 16;
-        for (int gx = 0; gx < steps; gx++) {
-            int centerX = interpolate(bounds.minCenterX(), bounds.maxCenterX(), gx, steps);
-            for (int gz = 0; gz < steps; gz++) {
-                int centerZ = interpolate(bounds.minCenterZ(), bounds.maxCenterZ(), gz, steps);
-                if (!hasStructuralClearance(centerX, centerZ, size, reserved, 0)) continue;
-                int originX = centerX - size.width() / 2;
-                int originZ = centerZ - size.width() / 2;
-                TerrainProfile terrain = inspectSampledTerrain(level, originX, originZ, size.width());
-                if (terrain == null) continue;
-                double score = terrain.score() + spacingPenalty(nearestBasecampDistance(centerX, centerZ, reserved));
-                ScoredCandidate scored = new ScoredCandidate(centerX, centerZ, score, false);
-                if (best == null || scored.score() < best.score()) best = scored;
-            }
-        }
-        if (best != null) return best;
-        throw new IllegalStateException("City region cannot physically fit all required Basecamp structures without overlap.");
-    }
-
-    private static int interpolate(int min, int max, int index, int count) {
-        if (count <= 1 || min == max) return min;
-        return min + (int) Math.round((max - (double) min) * index / (count - 1.0));
-    }
-
-    private static PlacementCandidate finalizeCandidate(ServerLevel level, TemplateSize size, int centerX, int centerZ) {
-        int originX = centerX - size.width() / 2;
-        int originZ = centerZ - size.width() / 2;
-        int maxSurfaceY = inspectFullMaxSurface(level, originX, originZ, size.width());
-        int originY = maxSurfaceY - 1;
-        int maximumOriginY = level.getMaxY() - size.height() + 1;
-        if (originY > maximumOriginY) originY = maximumOriginY;
-        if (originY < level.getMinY()) originY = level.getMinY();
-        return new PlacementCandidate(centerX, centerZ, originX, originY, originZ);
     }
 
     private static boolean hasStructuralClearance(
@@ -244,63 +309,119 @@ public final class BasecampPlacementService {
     private static double spacingPenalty(double nearestDistance) {
         if (!Double.isFinite(nearestDistance) || nearestDistance >= PREFERRED_BASECAMP_DISTANCE) return 0.0;
         double ratio = (PREFERRED_BASECAMP_DISTANCE - nearestDistance) / PREFERRED_BASECAMP_DISTANCE;
-        return ratio * ratio * 250.0;
+        return ratio * ratio * 180.0;
     }
 
-    private static TerrainProfile inspectSampledTerrain(ServerLevel level, int originX, int originZ, int width) {
-        int[] offsets = sampleOffsets(width);
-        int[] surfaces = new int[offsets.length * offsets.length];
-        int maxSurface = Integer.MIN_VALUE;
-        int minSurface = Integer.MAX_VALUE;
-        int fluidCells = 0;
-        int index = 0;
+    private static double edgePenalty(SearchBounds bounds, int centerX, int centerZ) {
+        int edgeDistance = Math.min(
+                Math.min(centerX - bounds.minCenterX(), bounds.maxCenterX() - centerX),
+                Math.min(centerZ - bounds.minCenterZ(), bounds.maxCenterZ() - centerZ)
+        );
+        if (edgeDistance >= PREFERRED_EDGE_DISTANCE) return 0.0;
+        double ratio = (PREFERRED_EDGE_DISTANCE - edgeDistance) / (double) PREFERRED_EDGE_DISTANCE;
+        return ratio * ratio * 30.0;
+    }
 
-        for (int dx : offsets) {
-            for (int dz : offsets) {
-                SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz);
-                if (sample == null) return null;
-                surfaces[index++] = sample.surfaceY();
-                maxSurface = Math.max(maxSurface, sample.surfaceY());
-                minSurface = Math.min(minSurface, sample.surfaceY());
+    private static TerrainAssessment assessTerrain(
+            ServerLevel level,
+            int centerX,
+            int centerZ,
+            TemplateSize size,
+            boolean sampled
+    ) {
+        int half = size.width() / 2;
+        int originX = centerX - half;
+        int originZ = centerZ - half;
+        List<SurfaceSample> samples = new ArrayList<>();
+
+        if (sampled) {
+            int[] offsets = sampleOffsets(size.width());
+            for (int dx : offsets) {
+                for (int dz : offsets) {
+                    if (!isCoreFootprintCell(size, dx, dz)) continue;
+                    SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz);
+                    if (sample == null) return null;
+                    samples.add(sample);
+                }
+            }
+        } else {
+            for (int dx = 0; dx < size.width(); dx++) {
+                for (int dz = 0; dz < size.width(); dz++) {
+                    if (!isCoreFootprintCell(size, dx, dz)) continue;
+                    SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz);
+                    if (sample == null) return null;
+                    samples.add(sample);
+                }
+            }
+        }
+        if (samples.isEmpty()) return null;
+        return optimizeSurface(samples);
+    }
+
+    private static TerrainAssessment optimizeSurface(List<SurfaceSample> samples) {
+        int maxSurface = samples.stream().mapToInt(SurfaceSample::surfaceY).max().orElseThrow();
+        int minSurface = samples.stream().mapToInt(SurfaceSample::surfaceY).min().orElseThrow();
+        int minimumTarget = maxSurface - MAX_TERRAIN_TRIM_DEPTH;
+        TerrainAssessment best = null;
+
+        for (int target = minimumTarget; target <= maxSurface; target++) {
+            double cutCost = 0.0;
+            double floatCost = 0.0;
+            int cutCells = 0;
+            int floatingCells = 0;
+            int severeFloatingCells = 0;
+            int fluidCells = 0;
+
+            for (SurfaceSample sample : samples) {
+                int difference = sample.surfaceY() - target;
+                if (difference > 0) {
+                    cutCells++;
+                    cutCost += difference == 1 ? 1.5 : 4.0;
+                } else if (difference < 0) {
+                    int gap = -difference;
+                    floatingCells++;
+                    if (gap == 1) floatCost += 0.15;
+                    else if (gap == 2) floatCost += 0.8;
+                    else {
+                        severeFloatingCells++;
+                        double excess = gap - 2.0;
+                        floatCost += 3.0 + excess * excess * 18.0;
+                    }
+                }
                 if (sample.fluid()) fluidCells++;
             }
-        }
 
-        int floatingCells = 0;
-        int totalGap = 0;
-        for (int surfaceY : surfaces) {
-            int gap = maxSurface - surfaceY;
-            totalGap += gap;
-            if (gap >= 2) floatingCells++;
-        }
+            double count = samples.size();
+            double cutFraction = cutCells / count;
+            double floatingFraction = floatingCells / count;
+            double severeFloatingFraction = severeFloatingCells / count;
+            double fluidFraction = fluidCells / count;
+            double roughness = maxSurface - minSurface;
+            double score = (cutCost + floatCost) / count
+                    + cutFraction * 8.0
+                    + floatingFraction * 6.0
+                    + severeFloatingFraction * 220.0
+                    + fluidFraction * 1200.0
+                    + roughness * 2.5;
 
-        double floatingFraction = floatingCells / (double) surfaces.length;
-        double fluidFraction = fluidCells / (double) surfaces.length;
-        double averageGap = totalGap / (double) surfaces.length;
-        int surfaceDelta = maxSurface - minSurface;
-        boolean preferred = surfaceDelta <= PREFERRED_MAX_SURFACE_DELTA
-                && floatingFraction <= PREFERRED_MAX_FLOATING_FRACTION
-                && fluidCells == 0;
-        double score = surfaceDelta * 20.0
-                + averageGap * 15.0
-                + floatingFraction * 120.0
-                + fluidFraction * 1000.0;
-        return new TerrainProfile(score, preferred);
-    }
-
-    private static int inspectFullMaxSurface(ServerLevel level, int originX, int originZ, int width) {
-        int maxSurface = level.getMinY() + 1;
-        for (int dx = 0; dx < width; dx++) {
-            for (int dz = 0; dz < width; dz++) {
-                SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz);
-                if (sample != null) maxSurface = Math.max(maxSurface, sample.surfaceY());
-            }
+            TerrainAssessment assessment = new TerrainAssessment(
+                    target, score, roughness, cutFraction, floatingFraction, severeFloatingFraction, fluidFraction
+            );
+            if (best == null || assessment.score() < best.score()) best = assessment;
         }
-        return maxSurface;
+        return best;
     }
 
     private static int[] sampleOffsets(int width) {
         return new int[]{0, width / 4, width / 2, (width * 3) / 4, width - 1};
+    }
+
+    private static boolean isCoreFootprintCell(TemplateSize size, int dx, int dz) {
+        double center = (size.width() - 1) / 2.0;
+        double x = dx - center;
+        double z = dz - center;
+        double radius = size.width() / 2.0;
+        return x * x + z * z <= radius * radius;
     }
 
     private static SurfaceSample findSurfaceSample(ServerLevel level, int x, int z) {
@@ -344,9 +465,41 @@ public final class BasecampPlacementService {
                 for (int y = candidate.originY(); y <= structureTop; y++) {
                     cursor.set(x, y, z);
                     BlockState state = level.getBlockState(cursor);
-                    if (state.is(BlockTags.REPLACEABLE)) {
-                        level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
-                    }
+                    if (state.is(BlockTags.REPLACEABLE)) level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
+                }
+            }
+        }
+    }
+
+    private static void trimTerrain(ServerLevel level, PlacementCandidate candidate, TemplateSize size) {
+        double center = (size.width() - 1) / 2.0;
+        double coreRadius = size.width() / 2.0;
+        double featherRadius = coreRadius + 1.5;
+        int minLocal = -1;
+        int maxLocal = size.width();
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+
+        for (int dx = minLocal; dx <= maxLocal; dx++) {
+            for (int dz = minLocal; dz <= maxLocal; dz++) {
+                double x = dx - center;
+                double z = dz - center;
+                double distanceSquared = x * x + z * z;
+                if (distanceSquared > featherRadius * featherRadius) continue;
+
+                boolean core = distanceSquared <= coreRadius * coreRadius;
+                int maxTrim = core ? MAX_TERRAIN_TRIM_DEPTH : FEATHER_TRIM_DEPTH;
+                int worldX = candidate.originX() + dx;
+                int worldZ = candidate.originZ() + dz;
+                SurfaceSample sample = findSurfaceSample(level, worldX, worldZ);
+                if (sample == null || sample.surfaceY() <= candidate.targetSurfaceY()) continue;
+
+                int trimDepth = Math.min(maxTrim, sample.surfaceY() - candidate.targetSurfaceY());
+                for (int depth = 0; depth < trimDepth; depth++) {
+                    int y = sample.surfaceY() - 1 - depth;
+                    cursor.set(worldX, y, worldZ);
+                    BlockState state = level.getBlockState(cursor);
+                    if (state.is(Blocks.BEDROCK) || level.getBlockEntity(cursor) != null) break;
+                    level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
                 }
             }
         }
@@ -368,19 +521,20 @@ public final class BasecampPlacementService {
 
     private record ColorVariant(String id, String normalSuffix, String ruinedSuffix) { }
     private record TemplateSize(int width, int height) { }
+    private record BasecampSpec(int index, Identifier templateId, StructureTemplate template, TemplateSize size,
+                                String color, boolean large, boolean ruined) { }
     private record PlacedFootprint(int centerX, int centerZ, int halfWidth) { }
-    private record SearchBounds(int minCenterX, int maxCenterX, int minCenterZ, int maxCenterZ) { }
+    private record CandidatePoint(int x, int z) { }
+    private record SearchBounds(int minCenterX, int maxCenterX, int minCenterZ, int maxCenterZ) {
+        boolean contains(int x, int z) {
+            return x >= minCenterX && x <= maxCenterX && z >= minCenterZ && z <= maxCenterZ;
+        }
+    }
     private record SurfaceSample(int surfaceY, boolean fluid) { }
-    private record TerrainProfile(double score, boolean preferred) { }
-    private record ScoredCandidate(int centerX, int centerZ, double score, boolean preferred) { }
-    private record PlacementCandidate(int centerX, int centerZ, int originX, int originY, int originZ) { }
-    private record PlannedBasecamp(
-            Identifier templateId,
-            StructureTemplate template,
-            TemplateSize size,
-            String color,
-            boolean large,
-            boolean ruined,
-            PlacementCandidate candidate
-    ) { }
+    private record TerrainAssessment(int targetSurfaceY, double score, double roughness, double cutFraction,
+                                     double floatingFraction, double severeFloatingFraction, double fluidFraction) { }
+    private record ScoredCandidate(int centerX, int centerZ, double score, TerrainAssessment terrain) { }
+    private record PlacementCandidate(int centerX, int centerZ, int originX, int originY, int originZ,
+                                      int targetSurfaceY, double score) { }
+    private record PlannedBasecamp(BasecampSpec spec, PlacementCandidate candidate) { }
 }
