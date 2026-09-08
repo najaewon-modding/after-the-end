@@ -1,0 +1,95 @@
+name: Regenerate Basecamp V5
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/regenerate-basecamp-v5.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore rune pattern and blend inner stairs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('tools/generate_basecamp_structure.py')
+          text = path.read_text(encoding='utf-8')
+          replacement = '''def magic_altar():
+              for x in range(CENTER - 7, CENTER + 8):
+                  for z in range(CENTER - 7, CENTER + 8):
+                      dx, dz, r = x - CENTER, z - CENTER, dist(x, z)
+                      if 6.4 < r <= 7.15: put(x, 1, z, "minecraft:stone_brick_stairs", stair(radial_facing(dx, dz)))
+                      if r <= 6.45: put(x, 2, z, "minecraft:smooth_stone")
+
+              # Blend four short stair sections into the innermost altar instead of leaving a solid vertical rim.
+              for offset in (-1, 0, 1):
+                  put(CENTER + offset, 2, CENTER - 7, "minecraft:stone_brick_stairs", stair("south"))
+                  put(CENTER + offset, 2, CENTER + 7, "minecraft:stone_brick_stairs", stair("north"))
+                  put(CENTER - 7, 2, CENTER + offset, "minecraft:stone_brick_stairs", stair("east"))
+                  put(CENTER + 7, 2, CENTER + offset, "minecraft:stone_brick_stairs", stair("west"))
+
+              # Restore the denser rune design from the second altar iteration.
+              for x in range(CENTER - 7, CENTER + 8):
+                  for z in range(CENTER - 7, CENTER + 8):
+                      dx, dz, r = x - CENTER, z - CENTER, dist(x, z)
+                      if r > 6.75: continue
+                      facing = radial_facing(dx, dz)
+                      props = {"facing": facing}
+                      name = None
+                      if 5.65 <= r <= 6.45: name = "minecraft:light_gray_glazed_terracotta"
+                      if on_triangle(dx, dz): name = "minecraft:yellow_glazed_terracotta"
+                      if 2.15 <= r <= 2.75: name = "minecraft:blue_glazed_terracotta"
+                      if r <= 1.15: name = "minecraft:white_glazed_terracotta"
+                      if dx == 0 and dz == 0: name = "minecraft:yellow_glazed_terracotta"
+                      if name: put(x, 2, z, name, props)
+
+              markers = ((0, -7), (5, -5), (7, 0), (5, 5), (0, 7), (-5, 5), (-7, 0), (-5, -5))
+              for dx, dz in markers:
+                  put(CENTER + dx, 2, CENTER + dz, "minecraft:chiseled_stone_bricks")
+                  ix, iz = int(round(dx * 0.82)), int(round(dz * 0.82))
+                  put(CENTER + ix, 2, CENTER + iz, "minecraft:yellow_glazed_terracotta", {"facing": radial_facing(ix, iz)})
+
+          def pillar('''
+          updated, count = re.subn(r'def magic_altar\(\):.*?\ndef pillar\(', replacement, text, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'Expected one magic_altar block, replaced {count}')
+          path.write_text(updated, encoding='utf-8')
+          PY
+
+      - name: Generate Basecamp NBT
+        run: python tools/generate_basecamp_structure.py
+
+      - name: Validate generated structure
+        run: |
+          python - <<'PY'
+          import gzip, os
+          path = 'src/main/resources/data/njw_after_the_end/structure/basecamp/basecamp_01.nbt'
+          assert os.path.isfile(path), path
+          with gzip.open(path, 'rb') as f:
+              raw = f.read()
+          assert raw[:3] == b'\x0a\x00\x00', raw[:3]
+          for token in (b'DataVersion', b'palette', b'blocks', b'entities', b'light_gray_glazed_terracotta', b'yellow_glazed_terracotta', b'blue_glazed_terracotta', b'white_glazed_terracotta', b'chiseled_stone_bricks', b'stone_brick_stairs'):
+              assert token in raw, token
+          print(f'Validated {path}: {os.path.getsize(path)} compressed bytes, {len(raw)} raw bytes')
+          PY
+
+      - name: Commit refined Basecamp
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/generate_basecamp_structure.py src/main/resources/data/njw_after_the_end/structure/basecamp/basecamp_01.nbt
+          git rm .github/workflows/regenerate-basecamp-v5.yml
+          git commit -m 'feat: restore rune pattern and soften inner altar'
+          git push
