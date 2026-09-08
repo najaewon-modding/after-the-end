@@ -1,0 +1,95 @@
+name: Cleanup Rebrand
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/cleanup-rebrand.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rewrite legacy package and identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p src/main/java/net/njw/aftertheend
+          cp -R src/main/java/net/njw/beyondthecity/. src/main/java/net/njw/aftertheend/
+          rm -rf src/main/java/net/njw/beyondthecity
+          rm -f src/main/java/net/njw/aftertheend/BeyondtheCity.java
+          rm -f src/main/java/net/njw/aftertheend/city/command/CityTestCommand.java
+
+          mkdir -p src/test/java/net/njw/aftertheend
+          if [ -d src/test/java/net/njw/beyondthecity ]; then
+            cp -R src/test/java/net/njw/beyondthecity/. src/test/java/net/njw/aftertheend/
+            rm -rf src/test/java/net/njw/beyondthecity
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = [
+              ('net.njw.beyondthecity', 'net.njw.aftertheend'),
+              ('njw_beyond_the_city', 'njw_after_the_end'),
+              ('BeyondtheCity', 'AfterTheEnd'),
+              ('Beyond the City', 'After the End'),
+          ]
+
+          for path in Path('.').rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              updated = text
+              for old, new in replacements:
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+
+          build = Path('build.gradle')
+          text = build.read_text(encoding='utf-8')
+          marker = "version = mod_version\ngroup = mod_group_id\n"
+          addition = "version = mod_version\ngroup = mod_group_id\n\n['run/client1', 'run/client2', 'run/server'].each { project.file(it).mkdirs() }\n"
+          if "project.file(it).mkdirs()" not in text:
+              if marker not in text:
+                  raise SystemExit('build.gradle insertion marker not found')
+              text = text.replace(marker, addition, 1)
+              build.write_text(text, encoding='utf-8')
+          PY
+
+          rm -f .github/workflows/cleanup-rebrand.yml
+
+          if git grep -n -E 'beyondthecity|BeyondtheCity|njw_beyond_the_city|Beyond the City' -- ':!*.lock'; then
+            echo 'Legacy identifiers remain.' >&2
+            exit 1
+          fi
+
+          if find src -type d -name '*beyondthecity*' -print | grep -q .; then
+            echo 'Legacy package directories remain.' >&2
+            exit 1
+          fi
+
+      - name: Verify build
+        run: ./gradlew build
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'refactor: complete After the End rebrand'
+          git push origin HEAD:main
