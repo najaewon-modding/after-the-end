@@ -13,9 +13,9 @@ import net.njw.aftertheend.network.CityTeleportRequestPayload;
 import java.util.List;
 
 public final class CityListScreen extends Screen {
-    private static final int GUI_WIDTH = 256;
-    private static final int GUI_HEIGHT = 256;
-    private static final float GUI_SCALE = 0.75F;
+    private static final int GUI_WIDTH = 224;
+    private static final int GUI_HEIGHT = 184;
+    private static final float GUI_SCALE = 0.90F;
 
     private static final int BACKGROUND_COLOR = 0xEE17171B;
     private static final int PANEL_COLOR = 0xEE25252B;
@@ -25,20 +25,23 @@ public final class CityListScreen extends Screen {
     private static final int BUTTON_HOVER_COLOR = 0xFF3F7650;
     private static final int DISABLED_COLOR = 0xFF29292F;
 
-    private static final int SMALL_BUTTON_WIDTH = 86;
-    private static final int SMALL_BUTTON_HEIGHT = 24;
-    private static final int LARGE_BUTTON_WIDTH = 112;
-    private static final int LARGE_BUTTON_HEIGHT = 37;
-    private static final int LIST_X = 14;
-    private static final int LIST_Y = 39;
+    private static final int LIST_X = 10;
+    private static final int LIST_Y = 31;
+    private static final int LIST_WIDTH = 98;
+    private static final int LIST_ROW_HEIGHT = 26;
     private static final int LIST_ROW_GAP = 2;
-    private static final int LIST_VIEWPORT_HEIGHT = 154;
-    private static final int VISIBLE_CITY_COUNT = 4;
-    private static final int DETAIL_X = 138;
-    private static final int DETAIL_Y = 46;
-    private static final int MOVE_BUTTON_X = 40;
-    private static final int CLOSE_BUTTON_X = 130;
-    private static final int BOTTOM_BUTTON_Y = 202;
+    private static final int VISIBLE_CITY_COUNT = 5;
+    private static final int LIST_VIEWPORT_HEIGHT = VISIBLE_CITY_COUNT * LIST_ROW_HEIGHT + (VISIBLE_CITY_COUNT - 1) * LIST_ROW_GAP;
+
+    private static final int DETAIL_X = 118;
+    private static final int DETAIL_Y = 36;
+    private static final int DETAIL_WIDTH = 96;
+
+    private static final int BUTTON_WIDTH = 76;
+    private static final int BUTTON_HEIGHT = 20;
+    private static final int MOVE_BUTTON_X = 34;
+    private static final int CLOSE_BUTTON_X = 114;
+    private static final int BOTTOM_BUTTON_Y = 157;
 
     private int selectedIndex;
     private int scrollOffset;
@@ -61,12 +64,12 @@ public final class CityListScreen extends Screen {
 
         graphics.fill(0, 0, GUI_WIDTH, GUI_HEIGHT, BACKGROUND_COLOR);
         graphics.outline(0, 0, GUI_WIDTH, GUI_HEIGHT, 0xFF8A8A96);
-        graphics.centeredText(font, title, GUI_WIDTH / 2, 14, 0xFFFFFFFF);
+        graphics.centeredText(font, title, GUI_WIDTH / 2, 11, 0xFFFFFFFF);
 
-        graphics.fill(10, 32, 130, 197, PANEL_COLOR);
-        graphics.outline(10, 32, 120, 165, PANEL_BORDER_COLOR);
-        graphics.fill(134, 32, 246, 197, PANEL_COLOR);
-        graphics.outline(134, 32, 112, 165, PANEL_BORDER_COLOR);
+        graphics.fill(7, 27, 111, 146, PANEL_COLOR);
+        graphics.outline(7, 27, 104, 119, PANEL_BORDER_COLOR);
+        graphics.fill(114, 27, 217, 146, PANEL_COLOR);
+        graphics.outline(114, 27, 103, 119, PANEL_BORDER_COLOR);
 
         renderCityList(graphics);
         renderCityDetails(graphics);
@@ -78,66 +81,64 @@ public final class CityListScreen extends Screen {
         List<ClientCityManager.ClientCity> cities = ClientCityManager.getCities();
         normalizeState(cities);
         int endIndex = Math.min(cities.size(), scrollOffset + VISIBLE_CITY_COUNT);
-        int row = 0;
         for (int index = scrollOffset; index < endIndex; index++) {
             ClientCityManager.ClientCity city = cities.get(index);
-            int x = LIST_X;
-            int y = LIST_Y + row * (LARGE_BUTTON_HEIGHT + LIST_ROW_GAP);
+            int row = index - scrollOffset;
+            int y = LIST_Y + row * (LIST_ROW_HEIGHT + LIST_ROW_GAP);
             boolean selected = index == selectedIndex;
             int fillColor = selected ? SELECTED_COLOR : BUTTON_COLOR;
             int textColor = city.unlocked() ? 0xFFFFFFFF : 0xFFAAAAAA;
-            graphics.fill(x, y, x + LARGE_BUTTON_WIDTH, y + LARGE_BUTTON_HEIGHT, fillColor);
-            graphics.outline(x, y, LARGE_BUTTON_WIDTH, LARGE_BUTTON_HEIGHT, selected ? 0xFFA9D4FF : 0xFF55555F);
-            graphics.centeredText(font, Component.literal(city.name()), x + LARGE_BUTTON_WIDTH / 2, y + 9, textColor);
-            if (!city.unlocked()) graphics.centeredText(font, Component.translatable("gui.njw_after_the_end.city_list.status.locked"), x + LARGE_BUTTON_WIDTH / 2, y + 22, 0xFFFF7777);
-            row++;
+            graphics.fill(LIST_X, y, LIST_X + LIST_WIDTH, y + LIST_ROW_HEIGHT, fillColor);
+            graphics.outline(LIST_X, y, LIST_WIDTH, LIST_ROW_HEIGHT, selected ? 0xFFA9D4FF : 0xFF55555F);
+            graphics.centeredText(font, Component.literal(city.name()), LIST_X + LIST_WIDTH / 2, y + 5, textColor);
+            graphics.centeredText(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), LIST_X + LIST_WIDTH / 2, y + 15, city.unlocked() ? 0xFF7FD35A : 0xFFFF7777);
         }
     }
 
     private void renderCityDetails(GuiGraphicsExtractor graphics) {
         ClientCityManager.ClientCity city = getSelectedCity();
-        int x = DETAIL_X;
-        int y = DETAIL_Y;
         if (city == null) {
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.empty"), x, y, 0xFFAAAAAA, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.empty"), DETAIL_X, DETAIL_Y, 0xFFAAAAAA, false);
             return;
         }
 
-        graphics.text(font, Component.literal(city.name()), x, y, 0xFFFFFFFF, true);
-        graphics.text(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), x, y + 18, city.unlocked() ? 0xFF7FD35A : 0xFFFF5555, true);
+        graphics.centeredText(font, Component.literal(city.name()), DETAIL_X + DETAIL_WIDTH / 2, DETAIL_Y, 0xFFFFFFFF);
+        graphics.centeredText(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), DETAIL_X + DETAIL_WIDTH / 2, DETAIL_Y + 13, city.unlocked() ? 0xFF7FD35A : 0xFFFF5555);
 
+        int y = DETAIL_Y + 34;
         CityRegion overworldRegion = city.getRegion(Level.OVERWORLD.identifier());
         if (overworldRegion != null) {
             long blockX = (long) overworldRegion.centerChunkX() * 16L;
             long blockZ = (long) overworldRegion.centerChunkZ() * 16L;
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), x, y + 44, 0xFFDDDDDD, false);
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), x, y + 56, 0xFFFFFFFF, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), DETAIL_X, y, 0xFFBDBDC7, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), DETAIL_X, y + 11, 0xFFFFFFFF, false);
+            y += 31;
         }
 
         CityRegion netherRegion = city.getRegion(Level.NETHER.identifier());
         if (netherRegion != null) {
             long blockX = (long) netherRegion.centerChunkX() * 16L;
             long blockZ = (long) netherRegion.centerChunkZ() * 16L;
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), x, y + 78, 0xFFDDDDDD, false);
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), x, y + 90, 0xFFFFFFFF, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), DETAIL_X, y, 0xFFBDBDC7, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), DETAIL_X, y + 11, 0xFFFFFFFF, false);
         }
     }
 
     private void renderBottomButtons(GuiGraphicsExtractor graphics, double mouseX, double mouseY) {
         ClientCityManager.ClientCity city = getSelectedCity();
         boolean moveEnabled = city != null && city.unlocked();
-        boolean moveHovered = moveEnabled && isInside(mouseX, mouseY, MOVE_BUTTON_X, BOTTOM_BUTTON_Y, SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
+        boolean moveHovered = moveEnabled && isInside(mouseX, mouseY, MOVE_BUTTON_X, BOTTOM_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
         drawButton(graphics, MOVE_BUTTON_X, BOTTOM_BUTTON_Y, Component.translatable("gui.njw_after_the_end.city_list.move"), moveEnabled, moveHovered);
 
-        boolean closeHovered = isInside(mouseX, mouseY, CLOSE_BUTTON_X, BOTTOM_BUTTON_Y, SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT);
+        boolean closeHovered = isInside(mouseX, mouseY, CLOSE_BUTTON_X, BOTTOM_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
         drawButton(graphics, CLOSE_BUTTON_X, BOTTOM_BUTTON_Y, Component.translatable("gui.njw_after_the_end.city_list.close"), true, closeHovered);
     }
 
     private void drawButton(GuiGraphicsExtractor graphics, int x, int y, Component label, boolean enabled, boolean hovered) {
         int color = !enabled ? DISABLED_COLOR : hovered ? BUTTON_HOVER_COLOR : BUTTON_COLOR;
-        graphics.fill(x, y, x + SMALL_BUTTON_WIDTH, y + SMALL_BUTTON_HEIGHT, color);
-        graphics.outline(x, y, SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT, hovered ? 0xFF9BD0A8 : 0xFF666670);
-        graphics.centeredText(font, label, x + SMALL_BUTTON_WIDTH / 2, y + 8, enabled ? 0xFFFFFFFF : 0xFF777777);
+        graphics.fill(x, y, x + BUTTON_WIDTH, y + BUTTON_HEIGHT, color);
+        graphics.outline(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, hovered ? 0xFF9BD0A8 : 0xFF666670);
+        graphics.centeredText(font, label, x + BUTTON_WIDTH / 2, y + 6, enabled ? 0xFFFFFFFF : 0xFF777777);
     }
 
     @Override
@@ -146,27 +147,26 @@ public final class CityListScreen extends Screen {
         double mouseY = screenToGuiY(click.y());
         List<ClientCityManager.ClientCity> cities = ClientCityManager.getCities();
 
-        if (isInside(mouseX, mouseY, LIST_X, LIST_Y, LARGE_BUTTON_WIDTH, LIST_VIEWPORT_HEIGHT)) {
+        if (isInside(mouseX, mouseY, LIST_X, LIST_Y, LIST_WIDTH, LIST_VIEWPORT_HEIGHT)) {
             int endIndex = Math.min(cities.size(), scrollOffset + VISIBLE_CITY_COUNT);
-            int row = 0;
             for (int index = scrollOffset; index < endIndex; index++) {
-                int y = LIST_Y + row * (LARGE_BUTTON_HEIGHT + LIST_ROW_GAP);
-                if (isInside(mouseX, mouseY, LIST_X, y, LARGE_BUTTON_WIDTH, LARGE_BUTTON_HEIGHT)) {
+                int row = index - scrollOffset;
+                int y = LIST_Y + row * (LIST_ROW_HEIGHT + LIST_ROW_GAP);
+                if (isInside(mouseX, mouseY, LIST_X, y, LIST_WIDTH, LIST_ROW_HEIGHT)) {
                     selectedIndex = index;
                     return true;
                 }
-                row++;
             }
         }
 
         ClientCityManager.ClientCity selectedCity = getSelectedCity();
-        if (selectedCity != null && selectedCity.unlocked() && isInside(mouseX, mouseY, MOVE_BUTTON_X, BOTTOM_BUTTON_Y, SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT)) {
+        if (selectedCity != null && selectedCity.unlocked() && isInside(mouseX, mouseY, MOVE_BUTTON_X, BOTTOM_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             ClientPacketDistributor.sendToServer(new CityTeleportRequestPayload(selectedCity.id()));
             onClose();
             return true;
         }
 
-        if (isInside(mouseX, mouseY, CLOSE_BUTTON_X, BOTTOM_BUTTON_Y, SMALL_BUTTON_WIDTH, SMALL_BUTTON_HEIGHT)) {
+        if (isInside(mouseX, mouseY, CLOSE_BUTTON_X, BOTTOM_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             onClose();
             return true;
         }
@@ -180,7 +180,7 @@ public final class CityListScreen extends Screen {
         if (cities.size() <= VISIBLE_CITY_COUNT) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         double logicalMouseX = screenToGuiX(mouseX);
         double logicalMouseY = screenToGuiY(mouseY);
-        if (!isInside(logicalMouseX, logicalMouseY, LIST_X, LIST_Y, LARGE_BUTTON_WIDTH, LIST_VIEWPORT_HEIGHT)) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        if (!isInside(logicalMouseX, logicalMouseY, LIST_X, LIST_Y, LIST_WIDTH, LIST_VIEWPORT_HEIGHT)) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         int maxScroll = Math.max(0, cities.size() - VISIBLE_CITY_COUNT);
         if (scrollY > 0.0D) {
             scrollOffset = Math.max(0, scrollOffset - 1);
@@ -208,6 +208,8 @@ public final class CityListScreen extends Screen {
         }
         selectedIndex = Math.max(0, Math.min(selectedIndex, cities.size() - 1));
         scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, cities.size() - VISIBLE_CITY_COUNT)));
+        if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+        if (selectedIndex >= scrollOffset + VISIBLE_CITY_COUNT) scrollOffset = selectedIndex - VISIBLE_CITY_COUNT + 1;
     }
 
     private int getGuiLeft() { return (width - Math.round(GUI_WIDTH * GUI_SCALE)) / 2; }
