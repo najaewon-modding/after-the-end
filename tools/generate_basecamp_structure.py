@@ -68,20 +68,34 @@ def magic_altar():
             dx, dz, r = x - CENTER, z - CENTER, dist(x, z)
             if 6.4 < r <= 7.15: put(x, 1, z, "minecraft:stone_brick_stairs", stair(radial_facing(dx, dz)))
             if r <= 6.45: put(x, 2, z, "minecraft:smooth_stone")
-    outer_runes = ((0, -6), (3, -5), (5, -3), (6, 0), (5, 3), (3, 5), (0, 6), (-3, 5), (-5, 3), (-6, 0), (-5, -3), (-3, -5))
-    for dx, dz in outer_runes:
-        put(CENTER + dx, 2, CENTER + dz, "minecraft:light_gray_glazed_terracotta", {"facing": radial_facing(dx, dz)})
-    for x in range(CENTER - 5, CENTER + 6):
-        for z in range(CENTER - 5, CENTER + 6):
+
+    # Blend four short stair sections into the innermost altar instead of leaving a solid vertical rim.
+    for offset in (-1, 0, 1):
+        put(CENTER + offset, 2, CENTER - 7, "minecraft:stone_brick_stairs", stair("south"))
+        put(CENTER + offset, 2, CENTER + 7, "minecraft:stone_brick_stairs", stair("north"))
+        put(CENTER - 7, 2, CENTER + offset, "minecraft:stone_brick_stairs", stair("east"))
+        put(CENTER + 7, 2, CENTER + offset, "minecraft:stone_brick_stairs", stair("west"))
+
+    # Restore the denser rune design from the second altar iteration.
+    for x in range(CENTER - 7, CENTER + 8):
+        for z in range(CENTER - 7, CENTER + 8):
             dx, dz, r = x - CENTER, z - CENTER, dist(x, z)
+            if r > 6.75: continue
             facing = radial_facing(dx, dz)
-            if on_triangle(dx, dz): put(x, 2, z, "minecraft:yellow_glazed_terracotta", {"facing": facing})
-            elif 2.1 <= r <= 2.6 and (abs(dx) <= 1 or abs(dz) <= 1 or abs(abs(dx) - abs(dz)) <= 1): put(x, 2, z, "minecraft:blue_glazed_terracotta", {"facing": facing})
-    for dx, dz in ((0, -4), (4, 0), (0, 4), (-4, 0)):
+            props = {"facing": facing}
+            name = None
+            if 5.65 <= r <= 6.45: name = "minecraft:light_gray_glazed_terracotta"
+            if on_triangle(dx, dz): name = "minecraft:yellow_glazed_terracotta"
+            if 2.15 <= r <= 2.75: name = "minecraft:blue_glazed_terracotta"
+            if r <= 1.15: name = "minecraft:white_glazed_terracotta"
+            if dx == 0 and dz == 0: name = "minecraft:yellow_glazed_terracotta"
+            if name: put(x, 2, z, name, props)
+
+    markers = ((0, -7), (5, -5), (7, 0), (5, 5), (0, 7), (-5, 5), (-7, 0), (-5, -5))
+    for dx, dz in markers:
         put(CENTER + dx, 2, CENTER + dz, "minecraft:chiseled_stone_bricks")
-    put(CENTER, 2, CENTER, "minecraft:yellow_glazed_terracotta", {"facing": "north"})
-    for dx, dz in ((0, -1), (1, 0), (0, 1), (-1, 0)):
-        put(CENTER + dx, 2, CENTER + dz, "minecraft:white_glazed_terracotta", {"facing": radial_facing(dx, dz)})
+        ix, iz = int(round(dx * 0.82)), int(round(dz * 0.82))
+        put(CENTER + ix, 2, CENTER + iz, "minecraft:yellow_glazed_terracotta", {"facing": radial_facing(ix, iz)})
 
 def pillar(px, pz, inward_x, inward_z):
     for x in range(px - 2, px + 3):
