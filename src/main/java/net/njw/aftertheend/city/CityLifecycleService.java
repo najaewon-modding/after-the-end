@@ -16,7 +16,7 @@ public final class CityLifecycleService {
         ensureCanCreateCity(server);
         long sequence = CityManager.reserveNextCitySequence(server);
         City city = CityPlacementService.placeAccessibleCity(server, "city_" + sequence, "City " + sequence);
-        BasecampPlacementService.ensureGenerated(server, city);
+        generateBasecampsOrRollback(server, city);
         CityPregenerationHandler.enqueueCity(server, city);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
@@ -27,7 +27,7 @@ public final class CityLifecycleService {
         ensureCanCreateCity(server);
         long sequence = CityManager.reserveNextCitySequence(server);
         City city = CityPlacementService.placeLockedCity(server, "city_" + sequence, "City " + sequence);
-        BasecampPlacementService.ensureGenerated(server, city);
+        generateBasecampsOrRollback(server, city);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
         return city;
@@ -62,6 +62,17 @@ public final class CityLifecycleService {
     public static void setMaxCityCount(MinecraftServer server, int maxCityCount) {
         CityManager.setMaxCityCount(server, maxCityCount);
         CitySyncService.syncToAll(server);
+    }
+
+    private static void generateBasecampsOrRollback(MinecraftServer server, City city) {
+        try {
+            BasecampPlacementService.ensureGenerated(server, city);
+        } catch (RuntimeException exception) {
+            BasecampManager.removeCity(server, city.id());
+            CityManager.removeCity(server, city.id());
+            PlayerPositionTracker.invalidateAllCityCaches();
+            throw exception;
+        }
     }
 
     private static void ensureCanCreateCity(MinecraftServer server) {
