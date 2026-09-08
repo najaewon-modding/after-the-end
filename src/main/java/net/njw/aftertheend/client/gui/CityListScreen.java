@@ -17,13 +17,19 @@ public final class CityListScreen extends Screen {
     private static final int GUI_HEIGHT = 184;
     private static final float GUI_SCALE = 0.90F;
 
-    private static final int BACKGROUND_COLOR = 0xEE17171B;
-    private static final int PANEL_COLOR = 0xEE25252B;
-    private static final int PANEL_BORDER_COLOR = 0xFF62626C;
-    private static final int SELECTED_COLOR = 0xFF315D89;
-    private static final int BUTTON_COLOR = 0xFF3A3A42;
-    private static final int BUTTON_HOVER_COLOR = 0xFF3F7650;
-    private static final int DISABLED_COLOR = 0xFF29292F;
+    private static final int OUTLINE_COLOR = 0xFF2B1A0E;
+    private static final int FRAME_OUTER_COLOR = 0xE66B4526;
+    private static final int FRAME_INNER_COLOR = 0xE6A66B35;
+    private static final int SURFACE_COLOR = 0x991A1A1A;
+    private static final int PANEL_COLOR = 0x80141414;
+    private static final int ROW_COLOR = 0x8C1A1A1A;
+    private static final int ROW_HOVER_COLOR = 0xAA3A2A1D;
+    private static final int ROW_SELECTED_COLOR = 0xB86B4526;
+    private static final int BUTTON_COLOR = 0xA61A1A1A;
+    private static final int BUTTON_HOVER_COLOR = 0xCC6B4526;
+    private static final int DISABLED_COLOR = 0x70101010;
+    private static final int ACCENT_COLOR = 0xFFE0A969;
+    private static final int MUTED_COLOR = 0xFFB8AA9A;
 
     private static final int LIST_X = 10;
     private static final int LIST_Y = 31;
@@ -62,22 +68,18 @@ public final class CityListScreen extends Screen {
         graphics.pose().translate(screenLeft, screenTop);
         graphics.pose().scale(GUI_SCALE, GUI_SCALE);
 
-        graphics.fill(0, 0, GUI_WIDTH, GUI_HEIGHT, BACKGROUND_COLOR);
-        graphics.outline(0, 0, GUI_WIDTH, GUI_HEIGHT, 0xFF8A8A96);
+        drawFramedSurface(graphics, 0, 0, GUI_WIDTH, GUI_HEIGHT, SURFACE_COLOR);
         graphics.centeredText(font, title, GUI_WIDTH / 2, 11, 0xFFFFFFFF);
+        drawPanel(graphics, 7, 27, 104, 119);
+        drawPanel(graphics, 114, 27, 103, 119);
 
-        graphics.fill(7, 27, 111, 146, PANEL_COLOR);
-        graphics.outline(7, 27, 104, 119, PANEL_BORDER_COLOR);
-        graphics.fill(114, 27, 217, 146, PANEL_COLOR);
-        graphics.outline(114, 27, 103, 119, PANEL_BORDER_COLOR);
-
-        renderCityList(graphics);
+        renderCityList(graphics, logicalMouseX, logicalMouseY);
         renderCityDetails(graphics);
         renderBottomButtons(graphics, logicalMouseX, logicalMouseY);
         graphics.pose().popMatrix();
     }
 
-    private void renderCityList(GuiGraphicsExtractor graphics) {
+    private void renderCityList(GuiGraphicsExtractor graphics, double mouseX, double mouseY) {
         List<ClientCityManager.ClientCity> cities = ClientCityManager.getCities();
         normalizeState(cities);
         int endIndex = Math.min(cities.size(), scrollOffset + VISIBLE_CITY_COUNT);
@@ -86,31 +88,34 @@ public final class CityListScreen extends Screen {
             int row = index - scrollOffset;
             int y = LIST_Y + row * (LIST_ROW_HEIGHT + LIST_ROW_GAP);
             boolean selected = index == selectedIndex;
-            int fillColor = selected ? SELECTED_COLOR : BUTTON_COLOR;
+            boolean hovered = isInside(mouseX, mouseY, LIST_X, y, LIST_WIDTH, LIST_ROW_HEIGHT);
+            int fillColor = selected ? ROW_SELECTED_COLOR : hovered ? ROW_HOVER_COLOR : ROW_COLOR;
+            int borderColor = selected ? ACCENT_COLOR : FRAME_OUTER_COLOR;
             int textColor = city.unlocked() ? 0xFFFFFFFF : 0xFFAAAAAA;
             graphics.fill(LIST_X, y, LIST_X + LIST_WIDTH, y + LIST_ROW_HEIGHT, fillColor);
-            graphics.outline(LIST_X, y, LIST_WIDTH, LIST_ROW_HEIGHT, selected ? 0xFFA9D4FF : 0xFF55555F);
+            graphics.outline(LIST_X, y, LIST_WIDTH, LIST_ROW_HEIGHT, borderColor);
             graphics.centeredText(font, Component.literal(city.name()), LIST_X + LIST_WIDTH / 2, y + 5, textColor);
-            graphics.centeredText(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), LIST_X + LIST_WIDTH / 2, y + 15, city.unlocked() ? 0xFF7FD35A : 0xFFFF7777);
+            graphics.centeredText(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), LIST_X + LIST_WIDTH / 2, y + 15, city.unlocked() ? 0xFF91C97A : 0xFFE28A78);
         }
     }
 
     private void renderCityDetails(GuiGraphicsExtractor graphics) {
         ClientCityManager.ClientCity city = getSelectedCity();
         if (city == null) {
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.empty"), DETAIL_X, DETAIL_Y, 0xFFAAAAAA, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.empty"), DETAIL_X, DETAIL_Y, MUTED_COLOR, false);
             return;
         }
 
         graphics.centeredText(font, Component.literal(city.name()), DETAIL_X + DETAIL_WIDTH / 2, DETAIL_Y, 0xFFFFFFFF);
-        graphics.centeredText(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), DETAIL_X + DETAIL_WIDTH / 2, DETAIL_Y + 13, city.unlocked() ? 0xFF7FD35A : 0xFFFF5555);
+        graphics.centeredText(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), DETAIL_X + DETAIL_WIDTH / 2, DETAIL_Y + 13, city.unlocked() ? 0xFF91C97A : 0xFFE28A78);
+        graphics.fill(DETAIL_X, DETAIL_Y + 26, DETAIL_X + DETAIL_WIDTH, DETAIL_Y + 27, 0x806B4526);
 
         int y = DETAIL_Y + 34;
         CityRegion overworldRegion = city.getRegion(Level.OVERWORLD.identifier());
         if (overworldRegion != null) {
             long blockX = (long) overworldRegion.centerChunkX() * 16L;
             long blockZ = (long) overworldRegion.centerChunkZ() * 16L;
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), DETAIL_X, y, 0xFFBDBDC7, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), DETAIL_X, y, MUTED_COLOR, false);
             graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), DETAIL_X, y + 11, 0xFFFFFFFF, false);
             y += 31;
         }
@@ -119,7 +124,7 @@ public final class CityListScreen extends Screen {
         if (netherRegion != null) {
             long blockX = (long) netherRegion.centerChunkX() * 16L;
             long blockZ = (long) netherRegion.centerChunkZ() * 16L;
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), DETAIL_X, y, 0xFFBDBDC7, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), DETAIL_X, y, MUTED_COLOR, false);
             graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), DETAIL_X, y + 11, 0xFFFFFFFF, false);
         }
     }
@@ -135,10 +140,23 @@ public final class CityListScreen extends Screen {
     }
 
     private void drawButton(GuiGraphicsExtractor graphics, int x, int y, Component label, boolean enabled, boolean hovered) {
-        int color = !enabled ? DISABLED_COLOR : hovered ? BUTTON_HOVER_COLOR : BUTTON_COLOR;
-        graphics.fill(x, y, x + BUTTON_WIDTH, y + BUTTON_HEIGHT, color);
-        graphics.outline(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, hovered ? 0xFF9BD0A8 : 0xFF666670);
+        int fillColor = !enabled ? DISABLED_COLOR : hovered ? BUTTON_HOVER_COLOR : BUTTON_COLOR;
+        int borderColor = hovered && enabled ? ACCENT_COLOR : FRAME_OUTER_COLOR;
+        graphics.fill(x, y, x + BUTTON_WIDTH, y + BUTTON_HEIGHT, fillColor);
+        graphics.outline(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, borderColor);
         graphics.centeredText(font, label, x + BUTTON_WIDTH / 2, y + 6, enabled ? 0xFFFFFFFF : 0xFF777777);
+    }
+
+    private static void drawFramedSurface(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int surfaceColor) {
+        graphics.fill(x, y, x + width, y + height, FRAME_OUTER_COLOR);
+        graphics.fill(x + 2, y + 2, x + width - 2, y + height - 2, FRAME_INNER_COLOR);
+        graphics.fill(x + 4, y + 4, x + width - 4, y + height - 4, surfaceColor);
+        graphics.outline(x, y, width, height, OUTLINE_COLOR);
+    }
+
+    private static void drawPanel(GuiGraphicsExtractor graphics, int x, int y, int width, int height) {
+        graphics.fill(x, y, x + width, y + height, PANEL_COLOR);
+        graphics.outline(x, y, width, height, 0xCC6B4526);
     }
 
     @Override
