@@ -27,8 +27,9 @@ public final class CityListScreen extends Screen {
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int MUTED_COLOR = 0xFFAAAAAA;
     private static final int DIM_COLOR = 0xFF777777;
-    private static final int SELECTED_COLOR = 0xFFFFFFFF;
     private static final int HOVER_COLOR = 0xFFDDDDDD;
+    private static final int UNLOCKED_COLOR = 0xFF55FF55;
+    private static final int LOCKED_COLOR = 0xFFFF5555;
     private static final int BUTTON_BACKGROUND = 0x66000000;
     private static final int BUTTON_HOVER_BACKGROUND = 0x88000000;
     private static final int SEPARATOR_COLOR = 0x55FFFFFF;
@@ -69,11 +70,9 @@ public final class CityListScreen extends Screen {
             int y = listTop + row * ROW_HEIGHT;
             boolean selected = index == selectedIndex;
             boolean hovered = isInside(mouseX, mouseY, left, y - 3, LIST_WIDTH, ROW_HEIGHT);
-            int color = selected ? SELECTED_COLOR : hovered ? HOVER_COLOR : city.unlocked() ? MUTED_COLOR : DIM_COLOR;
+            int color = selected ? TEXT_COLOR : hovered ? HOVER_COLOR : MUTED_COLOR;
             Component marker = Component.literal(selected ? "> " : "  ");
             graphics.text(font, marker.copy().append(Component.literal(city.name())), left, y, color, false);
-            Component status = Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked");
-            graphics.text(font, status, left + LIST_WIDTH - font.width(status), y, city.unlocked() ? MUTED_COLOR : DIM_COLOR, false);
         }
     }
 
@@ -86,25 +85,23 @@ public final class CityListScreen extends Screen {
 
         graphics.text(font, Component.literal(city.name()), x, y, TEXT_COLOR, false);
         Component status = Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked");
-        graphics.text(font, status, x, y + 14, city.unlocked() ? MUTED_COLOR : DIM_COLOR, false);
+        graphics.text(font, status, x, y + 14, city.unlocked() ? UNLOCKED_COLOR : LOCKED_COLOR, false);
 
         int detailY = y + 38;
         CityRegion overworldRegion = city.getRegion(Level.OVERWORLD.identifier());
         if (overworldRegion != null) {
-            long blockX = (long) overworldRegion.centerChunkX() * 16L;
-            long blockZ = (long) overworldRegion.centerChunkZ() * 16L;
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), x, detailY, MUTED_COLOR, false);
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), x, detailY + 12, TEXT_COLOR, false);
-            detailY += 34;
+            renderRegionBounds(graphics, x, detailY, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), overworldRegion);
+            detailY += 46;
         }
 
         CityRegion netherRegion = city.getRegion(Level.NETHER.identifier());
-        if (netherRegion != null) {
-            long blockX = (long) netherRegion.centerChunkX() * 16L;
-            long blockZ = (long) netherRegion.centerChunkZ() * 16L;
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), x, detailY, MUTED_COLOR, false);
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), x, detailY + 12, TEXT_COLOR, false);
-        }
+        if (netherRegion != null) renderRegionBounds(graphics, x, detailY, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), netherRegion);
+    }
+
+    private void renderRegionBounds(GuiGraphicsExtractor graphics, int x, int y, Component dimension, CityRegion region) {
+        graphics.text(font, dimension, x, y, MUTED_COLOR, false);
+        graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", region.minBlockX(), region.minBlockZ()), x, y + 12, TEXT_COLOR, false);
+        graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", region.maxBlockX(), region.maxBlockZ()), x, y + 24, TEXT_COLOR, false);
     }
 
     private void renderBottomButtons(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int left, int top) {
