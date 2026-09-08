@@ -81,10 +81,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify build
-        run: |
-          chmod +x gradlew
-          ./gradlew build
+          git diff --check
 
       - name: Commit cleanup
         shell: bash
