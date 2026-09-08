@@ -227,20 +227,33 @@ public final class BasecampPlacementService {
             List<PlacedFootprint> reserved
     ) {
         ScoredCandidate best = null;
+        CandidatePoint firstClear = null;
         for (int gx = 0; gx < FALLBACK_GRID_AXIS; gx++) {
             int centerX = interpolate(bounds.minCenterX(), bounds.maxCenterX(), gx, FALLBACK_GRID_AXIS);
             for (int gz = 0; gz < FALLBACK_GRID_AXIS; gz++) {
                 int centerZ = interpolate(bounds.minCenterZ(), bounds.maxCenterZ(), gz, FALLBACK_GRID_AXIS);
                 if (!hasStructuralClearance(centerX, centerZ, size, reserved, 0)) continue;
+                if (firstClear == null) firstClear = new CandidatePoint(centerX, centerZ);
                 TerrainAssessment terrain = assessTerrain(level, centerX, centerZ, size, true);
                 if (terrain == null) continue;
                 ScoredCandidate scored = scoreCandidate(bounds, centerX, centerZ, terrain, reserved);
                 if (best == null || scored.score() < best.score()) best = scored;
             }
         }
+
         if (best == null) {
-            throw new IllegalStateException("City region cannot physically fit all required Basecamp structures without overlap.");
+            CandidatePoint emergency = firstClear != null
+                    ? firstClear
+                    : findEmergencyNonOverlappingSlot(bounds, size, reserved);
+            TerrainAssessment terrain = emergencyTerrainAssessment(level, emergency.x(), emergency.z(), size);
+            best = scoreCandidate(bounds, emergency.x(), emergency.z(), terrain, reserved);
+            AfterTheEnd.LOGGER.warn(
+                    "Basecamp terrain sampling failed; using mandatory emergency placement at ({}, {}), size={}x{}",
+                    emergency.x(), emergency.z(), size.width(), size.width()
+            );
+            return best;
         }
+
         TerrainAssessment full = assessTerrain(level, best.centerX(), best.centerZ(), size, false);
         if (full != null) best = scoreCandidate(bounds, best.centerX(), best.centerZ(), full, reserved);
         AfterTheEnd.LOGGER.warn(
@@ -248,6 +261,63 @@ public final class BasecampPlacementService {
                 best.centerX(), best.centerZ(), size.width(), size.width(), String.format("%.2f", best.score())
         );
         return best;
+    }
+
+    private static CandidatePoint findEmergencyNonOverlappingSlot(
+            SearchBounds bounds,
+            TemplateSize size,
+            List<PlacedFootprint> reserved
+    ) {
+        int stride = Math.max(1, size.width() + 1);
+        for (int x = bounds.minCenterX(); x <= bounds.maxCenterX(); x += stride) {
+            for (int z = bounds.minCenterZ(); z <= bounds.maxCenterZ(); z += stride) {
+                if (hasStructuralClearance(x, z, size, reserved, 0)) return new CandidatePoint(x, z);
+            }
+        }
+        if (hasStructuralClearance(bounds.maxCenterX(), bounds.maxCenterZ(), size, reserved, 0)) {
+            return new CandidatePoint(bounds.maxCenterX(), bounds.maxCenterZ());
+        }
+
+        int centerX = (bounds.minCenterX() + bounds.maxCenterX()) / 2;
+        int centerZ = (bounds.minCenterZ() + bounds.maxCenterZ()) / 2;
+        AfterTheEnd.LOGGER.error(
+                "Basecamp region is too constrained for a non-overlapping emergency slot; using city-center fallback at ({}, {})",
+                centerX, centerZ
+        );
+        return new CandidatePoint(centerX, centerZ);
+    }
+
+    private static TerrainAssessment emergencyTerrainAssessment(
+            ServerLevel level,
+            int centerX,
+            int centerZ,
+            TemplateSize size
+    ) {
+        level.getChunk(centerX >> 4, centerZ >> 4);
+        TerrainAssessment terrain = assessTerrain(level, centerX, centerZ, size, true);
+        if (terrain != null) return terrain;
+
+        SurfaceSample center = findSurfaceSample(level, centerX, centerZ);
+        int targetSurfaceY;
+        boolean fluid;
+        if (center != null) {
+            targetSurfaceY = center.surfaceY();
+            fluid = center.fluid();
+        } else {
+            targetSurfaceY = level.getHeight(Heightmap.Types.WORLD_SURFACE, centerX, centerZ);
+            if (targetSurfaceY <= level.getMinY()) targetSurfaceY = level.getSeaLevel();
+            targetSurfaceY = Math.max(level.getMinY() + 1, Math.min(level.getMaxY(), targetSurfaceY));
+            fluid = false;
+        }
+        return new TerrainAssessment(
+                targetSurfaceY,
+                1_000_000.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                fluid ? 1.0 : 0.0
+        );
     }
 
     private static int interpolate(int min, int max, int index, int count) {

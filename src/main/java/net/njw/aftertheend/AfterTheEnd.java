@@ -8,6 +8,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.njw.aftertheend.city.CityBoundaryHandler;
 import net.njw.aftertheend.city.CityInteractionHandler;
 import net.njw.aftertheend.city.CityTeleportService;
+import net.njw.aftertheend.city.basecamp.BasecampCommand;
 import net.njw.aftertheend.city.basecamp.BasecampGenerationHandler;
 import net.njw.aftertheend.city.command.CityAdminCommand;
 import net.njw.aftertheend.city.generation.CityPregenerationHandler;
@@ -30,6 +31,7 @@ public final class AfterTheEnd {
         NeoForge.EVENT_BUS.register(StructureRequirementHandler.class);
         NeoForge.EVENT_BUS.register(EnderEyeHandler.class);
         NeoForge.EVENT_BUS.register(BasecampGenerationHandler.class);
+        NeoForge.EVENT_BUS.register(BasecampCommand.class);
         NeoForge.EVENT_BUS.register(CityPregenerationHandler.class);
         NeoForge.EVENT_BUS.register(CityAdminCommand.class);
         NeoForge.EVENT_BUS.register(CitySyncService.class);
