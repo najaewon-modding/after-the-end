@@ -2,6 +2,8 @@ package net.njw.aftertheend.city;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.njw.aftertheend.city.basecamp.BasecampManager;
+import net.njw.aftertheend.city.basecamp.BasecampPlacementService;
 import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 import net.njw.aftertheend.city.placement.CityPlacementService;
 import net.njw.aftertheend.network.CitySyncService;
@@ -14,6 +16,7 @@ public final class CityLifecycleService {
         ensureCanCreateCity(server);
         long sequence = CityManager.reserveNextCitySequence(server);
         City city = CityPlacementService.placeAccessibleCity(server, "city_" + sequence, "City " + sequence);
+        BasecampPlacementService.ensureGenerated(server, city);
         CityPregenerationHandler.enqueueCity(server, city);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
@@ -24,6 +27,7 @@ public final class CityLifecycleService {
         ensureCanCreateCity(server);
         long sequence = CityManager.reserveNextCitySequence(server);
         City city = CityPlacementService.placeLockedCity(server, "city_" + sequence, "City " + sequence);
+        BasecampPlacementService.ensureGenerated(server, city);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
         return city;
@@ -31,6 +35,7 @@ public final class CityLifecycleService {
 
     public static City unlockCity(MinecraftServer server, String cityId) {
         City city = requireCity(server, cityId);
+        BasecampPlacementService.ensureGenerated(server, city);
         if (CityManager.isCityAccessible(server, cityId)) return city;
         CityManager.unlockCity(server, cityId);
         CityPregenerationHandler.enqueueCity(server, city);
@@ -48,6 +53,7 @@ public final class CityLifecycleService {
             }
         }
         CityPregenerationHandler.removeCity(cityId);
+        BasecampManager.removeCity(server, cityId);
         CityManager.removeCity(server, cityId);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
