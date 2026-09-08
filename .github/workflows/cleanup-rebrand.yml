@@ -82,7 +82,9 @@ jobs:
           fi
 
       - name: Verify build
-        run: ./gradlew build
+        run: |
+          chmod +x gradlew
+          ./gradlew build
 
       - name: Commit cleanup
         shell: bash
