@@ -5,16 +5,16 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
-import net.njw.beyondthecity.city.CityBoundaryHandler;
-import net.njw.beyondthecity.city.CityInteractionHandler;
-import net.njw.beyondthecity.city.CityTeleportService;
-import net.njw.beyondthecity.city.command.CityAdminCommand;
-import net.njw.beyondthecity.city.generation.CityPregenerationHandler;
-import net.njw.beyondthecity.city.progression.CityProgressionHandler;
-import net.njw.beyondthecity.city.structure.EnderEyeHandler;
-import net.njw.beyondthecity.city.structure.StructureRequirementHandler;
-import net.njw.beyondthecity.network.CityNetworkHandler;
-import net.njw.beyondthecity.network.CitySyncService;
+import net.njw.aftertheend.city.CityBoundaryHandler;
+import net.njw.aftertheend.city.CityInteractionHandler;
+import net.njw.aftertheend.city.CityTeleportService;
+import net.njw.aftertheend.city.command.CityAdminCommand;
+import net.njw.aftertheend.city.generation.CityPregenerationHandler;
+import net.njw.aftertheend.city.progression.CityProgressionHandler;
+import net.njw.aftertheend.city.structure.EnderEyeHandler;
+import net.njw.aftertheend.city.structure.StructureRequirementHandler;
+import net.njw.aftertheend.network.CityNetworkHandler;
+import net.njw.aftertheend.network.CitySyncService;
 import org.slf4j.Logger;
 
 @Mod(AfterTheEnd.MODID)

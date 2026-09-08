@@ -12,6 +12,8 @@ tasks.named('wrapper', Wrapper).configure {
 version = mod_version
 group = mod_group_id
 
+['run/client1', 'run/client2', 'run/server'].each { project.file(it).mkdirs() }
+
 sourceSets.main.resources {
     srcDir('src/generated/resources')
     exclude("**/*.bbmodel")
