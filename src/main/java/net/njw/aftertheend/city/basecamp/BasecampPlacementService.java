@@ -23,8 +23,8 @@ import java.util.List;
 import java.util.Set;
 
 public final class BasecampPlacementService {
-    private static final int CANDIDATE_GRID_AXIS = 8;
-    private static final int REFINED_CANDIDATE_COUNT = 10;
+    private static final int CANDIDATE_GRID_AXIS = 16;
+    private static final int REFINED_CANDIDATE_COUNT = 96;
     private static final int FALLBACK_GRID_AXIS = 20;
     private static final int CITY_EDGE_MARGIN = 8;
     private static final int PREFERRED_BASECAMP_DISTANCE = 160;
@@ -32,8 +32,8 @@ public final class BasecampPlacementService {
     private static final int MIN_STRUCTURE_GAP = 12;
     private static final int MAX_TERRAIN_TRIM_DEPTH = 2;
     private static final int FEATHER_TRIM_DEPTH = 1;
-    private static final int TREE_CLEAR_MARGIN = 4;
-    private static final int TREE_CLEAR_EXTRA_HEIGHT = 24;
+    private static final int TREE_CLEAR_MARGIN = 2;
+    private static final int TREE_CLEAR_EXTRA_HEIGHT = 16;
 
     private static final TemplateSize SMALL = new TemplateSize(11, 7);
     private static final TemplateSize LARGE = new TemplateSize(27, 10);
@@ -190,21 +190,23 @@ public final class BasecampPlacementService {
             if (!hasStructuralClearance(point.x(), point.z(), size, reserved, MIN_STRUCTURE_GAP)) continue;
             TerrainAssessment terrain = assessTerrain(level, point.x(), point.z(), size, true);
             if (terrain == null) continue;
-            coarse.add(scoreCandidate(bounds, point.x(), point.z(), terrain, reserved));
+            coarse.add(scoreTerrainCandidate(bounds, point.x(), point.z(), terrain));
         }
 
         coarse.sort(Comparator.comparingDouble(ScoredCandidate::score));
-        ScoredCandidate best = null;
+        List<ScoredCandidate> refined = new ArrayList<>();
         int refinementCount = Math.min(REFINED_CANDIDATE_COUNT, coarse.size());
         for (int i = 0; i < refinementCount; i++) {
             ScoredCandidate candidate = coarse.get(i);
             TerrainAssessment terrain = assessTerrain(level, candidate.centerX(), candidate.centerZ(), size, false);
             if (terrain == null) continue;
-            ScoredCandidate refined = scoreCandidate(bounds, candidate.centerX(), candidate.centerZ(), terrain, reserved);
-            if (best == null || refined.score() < best.score()) best = refined;
+            refined.add(scoreTerrainCandidate(bounds, candidate.centerX(), candidate.centerZ(), terrain));
         }
 
-        if (best == null) best = findGuaranteedFallback(level, bounds, size, reserved);
+        ScoredCandidate best = refined.isEmpty()
+                ? findGuaranteedFallback(level, bounds, size, reserved)
+                : chooseSpreadCandidate(refined, reserved);
+
         int half = size.width() / 2;
         int targetSurfaceY = best.terrain().targetSurfaceY();
         int originY = Math.max(level.getMinY(), Math.min(level.getMaxY() - size.height() + 1, targetSurfaceY - 1));
@@ -218,6 +220,51 @@ public final class BasecampPlacementService {
                 String.format("%.2f", result.score())
         );
         return result;
+    }
+
+    private static ScoredCandidate scoreTerrainCandidate(
+            SearchBounds bounds,
+            int centerX,
+            int centerZ,
+            TerrainAssessment terrain
+    ) {
+        return new ScoredCandidate(centerX, centerZ, terrain.score() + edgePenalty(bounds, centerX, centerZ), terrain);
+    }
+
+    private static ScoredCandidate chooseSpreadCandidate(
+            List<ScoredCandidate> candidates,
+            List<PlacedFootprint> reserved
+    ) {
+        candidates.sort(Comparator.comparingDouble(ScoredCandidate::score));
+        double bestTerrainScore = candidates.getFirst().score();
+        List<ScoredCandidate> acceptable = candidates.stream()
+                .filter(candidate -> withinQuarterConstraint(candidate.terrain()))
+                .filter(candidate -> candidate.score() <= bestTerrainScore + 120.0)
+                .toList();
+
+        if (acceptable.isEmpty()) {
+            acceptable = candidates.subList(0, Math.min(24, candidates.size()));
+        }
+        if (reserved.isEmpty()) {
+            return acceptable.stream().min(Comparator.comparingDouble(ScoredCandidate::score)).orElseThrow();
+        }
+
+        ScoredCandidate best = null;
+        double bestDistance = Double.NEGATIVE_INFINITY;
+        for (ScoredCandidate candidate : acceptable) {
+            double distance = nearestBasecampDistance(candidate.centerX(), candidate.centerZ(), reserved);
+            if (best == null
+                    || distance > bestDistance + 1.0e-6
+                    || (Math.abs(distance - bestDistance) <= 1.0e-6 && candidate.score() < best.score())) {
+                best = candidate;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    private static boolean withinQuarterConstraint(TerrainAssessment terrain) {
+        return terrain.cutFraction() <= 0.25 && terrain.floatingFraction() <= 0.25;
     }
 
     private static ScoredCandidate findGuaranteedFallback(
@@ -431,13 +478,12 @@ public final class BasecampPlacementService {
     private static TerrainAssessment optimizeSurface(List<SurfaceSample> samples) {
         int maxSurface = samples.stream().mapToInt(SurfaceSample::surfaceY).max().orElseThrow();
         int minSurface = samples.stream().mapToInt(SurfaceSample::surfaceY).min().orElseThrow();
-        int minimumTarget = maxSurface - MAX_TERRAIN_TRIM_DEPTH;
         TerrainAssessment best = null;
 
-        for (int target = minimumTarget; target <= maxSurface; target++) {
-            double cutCost = 0.0;
-            double floatCost = 0.0;
-            int cutCells = 0;
+        for (int target = minSurface; target <= maxSurface; target++) {
+            double burialDepthCost = 0.0;
+            double floatingDepthCost = 0.0;
+            int buriedCells = 0;
             int floatingCells = 0;
             int severeFloatingCells = 0;
             int fluidCells = 0;
@@ -445,41 +491,61 @@ public final class BasecampPlacementService {
             for (SurfaceSample sample : samples) {
                 int difference = sample.surfaceY() - target;
                 if (difference > 0) {
-                    cutCells++;
-                    cutCost += difference == 1 ? 1.5 : 4.0;
+                    buriedCells++;
+                    burialDepthCost += burialDepthPenalty(difference);
                 } else if (difference < 0) {
                     int gap = -difference;
                     floatingCells++;
-                    if (gap == 1) floatCost += 0.15;
-                    else if (gap == 2) floatCost += 0.8;
-                    else {
-                        severeFloatingCells++;
-                        double excess = gap - 2.0;
-                        floatCost += 3.0 + excess * excess * 18.0;
-                    }
+                    if (gap >= 4) severeFloatingCells++;
+                    floatingDepthCost += floatingDepthPenalty(gap);
                 }
                 if (sample.fluid()) fluidCells++;
             }
 
             double count = samples.size();
-            double cutFraction = cutCells / count;
+            double buriedFraction = buriedCells / count;
             double floatingFraction = floatingCells / count;
             double severeFloatingFraction = severeFloatingCells / count;
             double fluidFraction = fluidCells / count;
             double roughness = maxSurface - minSurface;
-            double score = (cutCost + floatCost) / count
-                    + cutFraction * 8.0
-                    + floatingFraction * 6.0
-                    + severeFloatingFraction * 220.0
+            double score = (burialDepthCost + floatingDepthCost) / count
+                    + quarterFractionPenalty(buriedFraction)
+                    + quarterFractionPenalty(floatingFraction)
+                    + severeFloatingFraction * 80.0
                     + fluidFraction * 1200.0
-                    + roughness * 2.5;
+                    + roughness * 0.35;
 
             TerrainAssessment assessment = new TerrainAssessment(
-                    target, score, roughness, cutFraction, floatingFraction, severeFloatingFraction, fluidFraction
+                    target, score, roughness, buriedFraction, floatingFraction, severeFloatingFraction, fluidFraction
             );
             if (best == null || assessment.score() < best.score()) best = assessment;
         }
         return best;
+    }
+
+    private static double burialDepthPenalty(int depth) {
+        if (depth <= 1) return 0.10;
+        if (depth == 2) return 0.30;
+        if (depth == 3) return 0.80;
+        double excess = depth - 3.0;
+        return 1.5 + excess * excess * 3.0;
+    }
+
+    private static double floatingDepthPenalty(int depth) {
+        if (depth <= 1) return 0.10;
+        if (depth == 2) return 0.35;
+        if (depth == 3) return 1.00;
+        double excess = depth - 3.0;
+        return 2.0 + excess * excess * 5.0;
+    }
+
+    private static double quarterFractionPenalty(double fraction) {
+        if (fraction <= 0.25) {
+            double ratio = fraction / 0.25;
+            return ratio * ratio * 6.0;
+        }
+        double excess = fraction - 0.25;
+        return 6.0 + excess * 4000.0 + excess * excess * 30000.0;
     }
 
     private static int[] sampleOffsets(int width) {
@@ -517,8 +583,15 @@ public final class BasecampPlacementService {
         int maxY = Math.min(level.getMaxY(), candidate.originY() + size.height() + TREE_CLEAR_EXTRA_HEIGHT);
 
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        double clearCenterX = candidate.originX() + (size.width() - 1) / 2.0;
+        double clearCenterZ = candidate.originZ() + (size.width() - 1) / 2.0;
+        double clearRadius = size.width() / 2.0 + TREE_CLEAR_MARGIN;
+        double clearRadiusSquared = clearRadius * clearRadius;
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
+                double dx = x - clearCenterX;
+                double dz = z - clearCenterZ;
+                if (dx * dx + dz * dz > clearRadiusSquared) continue;
                 for (int y = minY; y <= maxY; y++) {
                     cursor.set(x, y, z);
                     BlockState state = level.getBlockState(cursor);
@@ -544,7 +617,7 @@ public final class BasecampPlacementService {
     private static void trimTerrain(ServerLevel level, PlacementCandidate candidate, TemplateSize size) {
         double center = (size.width() - 1) / 2.0;
         double coreRadius = size.width() / 2.0;
-        double featherRadius = coreRadius + 1.5;
+        double featherRadius = coreRadius + 1.0;
         int minLocal = -1;
         int maxLocal = size.width();
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
