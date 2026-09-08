@@ -14,10 +14,10 @@ import net.njw.aftertheend.network.CityTeleportRequestPayload;
 import java.util.List;
 
 public final class CityListScreen extends Screen {
-    private static final int CONTENT_WIDTH = 220;
+    private static final int CONTENT_WIDTH = 320;
     private static final int CONTENT_HEIGHT = 166;
     private static final int LIST_WIDTH = 96;
-    private static final int COLUMN_GAP = 20;
+    private static final int COLUMN_GAP = 12;
     private static final int ROW_HEIGHT = 20;
     private static final int VISIBLE_CITY_COUNT = 5;
     private static final int BUTTON_WIDTH = 72;
@@ -100,7 +100,7 @@ public final class CityListScreen extends Screen {
 
     private void renderRegionBounds(GuiGraphicsExtractor graphics, int x, int y, Component dimension, CityRegion region) {
         graphics.text(font, dimension, x, y, MUTED_COLOR, false);
-        graphics.text(font, Component.literal("X " + region.minBlockX() + " ~ " + region.maxBlockX() + "  Z " + region.minBlockZ() + " ~ " + region.maxBlockZ()), x, y + 12, TEXT_COLOR, false);
+        graphics.text(font, Component.literal("X " + region.minBlockX() + "  Z " + region.minBlockZ() + " ~ X " + region.maxBlockX() + "  Z " + region.maxBlockZ()), x, y + 12, TEXT_COLOR, false);
     }
 
     private void renderBottomButtons(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int left, int top) {
