@@ -35,19 +35,22 @@ public final class CityPregenerationHandler {
 
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
-        MinecraftServer server = event.getServer();
         resetRuntimeState();
-        savedData = server.getDataStorage().computeIfAbsent(CitySavedData.TYPE);
-        for (City city : CityManager.getAccessibleCities(server)) registerCityTasks(server, city);
-        active = !tasks.isEmpty();
-        if (active) AfterTheEnd.LOGGER.info("City warm-up pregeneration started with {} pending task(s).", tasks.size());
+
+        // Temporarily disabled while Basecamp placement performance is being profiled.
+        // MinecraftServer server = event.getServer();
+        // savedData = server.getDataStorage().computeIfAbsent(CitySavedData.TYPE);
+        // for (City city : CityManager.getAccessibleCities(server)) registerCityTasks(server, city);
+        // active = !tasks.isEmpty();
+        // if (active) AfterTheEnd.LOGGER.info("City warm-up pregeneration started with {} pending task(s).", tasks.size());
     }
 
     public static void enqueueCity(MinecraftServer server, City city) {
-        if (savedData == null) savedData = server.getDataStorage().computeIfAbsent(CitySavedData.TYPE);
-        int before = tasks.size();
-        registerCityTasks(server, city);
-        if (tasks.size() > before) active = true;
+        // Temporarily disabled while Basecamp placement performance is being profiled.
+        // if (savedData == null) savedData = server.getDataStorage().computeIfAbsent(CitySavedData.TYPE);
+        // int before = tasks.size();
+        // registerCityTasks(server, city);
+        // if (tasks.size() > before) active = true;
     }
 
     private static void registerCityTasks(MinecraftServer server, City city) {
