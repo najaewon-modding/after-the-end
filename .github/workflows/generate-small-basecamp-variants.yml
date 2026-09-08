@@ -17,6 +17,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fix compact generator state flag
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tools/generate_small_basecamp_structure.py")
+          text = path.read_text()
+          text = text.replace(', "aged": False}', ', "decayed": False}')
+          text = text.replace(', "aged": True}', ', "decayed": True}')
+          text = text.replace('if not cfg["aged"]:', 'if not cfg["decayed"]:')
+          text = text.replace('if cfg["aged"] and', 'if cfg["decayed"] and')
+          path.write_text(text)
+          PY
+
       - name: Generate compact structures
         run: python tools/generate_small_basecamp_structure.py
 
@@ -63,6 +76,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/generate_small_basecamp_structure.py
           git add src/main/resources/data/njw_after_the_end/structure/basecamp/basecamp_small_*.nbt
           git rm .github/workflows/generate-small-basecamp-variants.yml
           git commit -m "feat: add compact basecamp variants"
