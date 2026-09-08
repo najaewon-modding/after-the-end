@@ -1,0 +1,234 @@
+name: Fix Basecamp Fallback And Locate
+
+on:
+  push:
+    paths:
+      - ".github/workflows/fix-basecamp-placement-locate.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Patch guaranteed Basecamp fallback
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/main/java/net/njw/aftertheend/city/basecamp/BasecampPlacementService.java")
+          text = path.read_text()
+          start = text.index("    private static ScoredCandidate findGuaranteedFallback(")
+          end = text.index("\n    private static int interpolate(", start)
+          replacement = '''    private static ScoredCandidate findGuaranteedFallback(
+                  ServerLevel level,
+                  SearchBounds bounds,
+                  TemplateSize size,
+                  List<PlacedFootprint> reserved
+          ) {
+              ScoredCandidate best = null;
+              CandidatePoint firstClear = null;
+              for (int gx = 0; gx < FALLBACK_GRID_AXIS; gx++) {
+                  int centerX = interpolate(bounds.minCenterX(), bounds.maxCenterX(), gx, FALLBACK_GRID_AXIS);
+                  for (int gz = 0; gz < FALLBACK_GRID_AXIS; gz++) {
+                      int centerZ = interpolate(bounds.minCenterZ(), bounds.maxCenterZ(), gz, FALLBACK_GRID_AXIS);
+                      if (!hasStructuralClearance(centerX, centerZ, size, reserved, 0)) continue;
+                      if (firstClear == null) firstClear = new CandidatePoint(centerX, centerZ);
+                      TerrainAssessment terrain = assessTerrain(level, centerX, centerZ, size, true);
+                      if (terrain == null) continue;
+                      ScoredCandidate scored = scoreCandidate(bounds, centerX, centerZ, terrain, reserved);
+                      if (best == null || scored.score() < best.score()) best = scored;
+                  }
+              }
+
+              if (best == null) {
+                  CandidatePoint emergency = firstClear != null
+                          ? firstClear
+                          : findEmergencyNonOverlappingSlot(bounds, size, reserved);
+                  TerrainAssessment terrain = emergencyTerrainAssessment(level, emergency.x(), emergency.z(), size);
+                  best = scoreCandidate(bounds, emergency.x(), emergency.z(), terrain, reserved);
+                  AfterTheEnd.LOGGER.warn(
+                          "Basecamp terrain sampling failed; using mandatory emergency placement at ({}, {}), size={}x{}",
+                          emergency.x(), emergency.z(), size.width(), size.width()
+                  );
+                  return best;
+              }
+
+              TerrainAssessment full = assessTerrain(level, best.centerX(), best.centerZ(), size, false);
+              if (full != null) best = scoreCandidate(bounds, best.centerX(), best.centerZ(), full, reserved);
+              AfterTheEnd.LOGGER.warn(
+                      "Basecamp used guaranteed fallback at ({}, {}), size={}x{}, score={}",
+                      best.centerX(), best.centerZ(), size.width(), size.width(), String.format("%.2f", best.score())
+              );
+              return best;
+          }
+
+          private static CandidatePoint findEmergencyNonOverlappingSlot(
+                  SearchBounds bounds,
+                  TemplateSize size,
+                  List<PlacedFootprint> reserved
+          ) {
+              int stride = Math.max(1, size.width() + 1);
+              for (int x = bounds.minCenterX(); x <= bounds.maxCenterX(); x += stride) {
+                  for (int z = bounds.minCenterZ(); z <= bounds.maxCenterZ(); z += stride) {
+                      if (hasStructuralClearance(x, z, size, reserved, 0)) return new CandidatePoint(x, z);
+                  }
+              }
+              if (hasStructuralClearance(bounds.maxCenterX(), bounds.maxCenterZ(), size, reserved, 0)) {
+                  return new CandidatePoint(bounds.maxCenterX(), bounds.maxCenterZ());
+              }
+
+              int centerX = (bounds.minCenterX() + bounds.maxCenterX()) / 2;
+              int centerZ = (bounds.minCenterZ() + bounds.maxCenterZ()) / 2;
+              AfterTheEnd.LOGGER.error(
+                      "Basecamp region is too constrained for a non-overlapping emergency slot; using city-center fallback at ({}, {})",
+                      centerX, centerZ
+              );
+              return new CandidatePoint(centerX, centerZ);
+          }
+
+          private static TerrainAssessment emergencyTerrainAssessment(
+                  ServerLevel level,
+                  int centerX,
+                  int centerZ,
+                  TemplateSize size
+          ) {
+              level.getChunk(centerX >> 4, centerZ >> 4);
+              TerrainAssessment terrain = assessTerrain(level, centerX, centerZ, size, true);
+              if (terrain != null) return terrain;
+
+              SurfaceSample center = findSurfaceSample(level, centerX, centerZ);
+              int targetSurfaceY;
+              boolean fluid;
+              if (center != null) {
+                  targetSurfaceY = center.surfaceY();
+                  fluid = center.fluid();
+              } else {
+                  targetSurfaceY = level.getHeight(Heightmap.Types.WORLD_SURFACE, centerX, centerZ);
+                  if (targetSurfaceY <= level.getMinY()) targetSurfaceY = level.getSeaLevel();
+                  targetSurfaceY = Math.max(level.getMinY() + 1, Math.min(level.getMaxY(), targetSurfaceY));
+                  fluid = false;
+              }
+              return new TerrainAssessment(
+                      targetSurfaceY,
+                      1_000_000.0,
+                      0.0,
+                      0.0,
+                      0.0,
+                      0.0,
+                      fluid ? 1.0 : 0.0
+              );
+          }
+'''
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+
+      - name: Add Basecamp locate command
+        run: |
+          cat > src/main/java/net/njw/aftertheend/city/basecamp/BasecampCommand.java <<'JAVA'
+          package net.njw.aftertheend.city.basecamp;
+
+          import net.minecraft.commands.CommandSourceStack;
+          import net.minecraft.commands.Commands;
+          import net.minecraft.network.chat.Component;
+          import net.neoforged.bus.api.SubscribeEvent;
+          import net.neoforged.neoforge.event.RegisterCommandsEvent;
+          import net.njw.aftertheend.city.City;
+          import net.njw.aftertheend.city.CityManager;
+
+          public final class BasecampCommand {
+              private BasecampCommand() { }
+
+              @SubscribeEvent
+              public static void onRegisterCommands(RegisterCommandsEvent event) {
+                  event.getDispatcher().register(
+                          Commands.literal("basecamp")
+                                  .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                                  .then(Commands.literal("locate").executes(context -> locateNearest(context.getSource())))
+                  );
+              }
+
+              private static int locateNearest(CommandSourceStack source) {
+                  double sourceX = source.getPosition().x();
+                  double sourceZ = source.getPosition().z();
+                  BasecampPlacement nearest = null;
+                  double nearestDistanceSquared = Double.POSITIVE_INFINITY;
+
+                  for (City city : CityManager.getCities(source.getServer())) {
+                      for (BasecampPlacement placement : BasecampManager.getPlacements(source.getServer(), city.id())) {
+                          int half = placement.large() ? 13 : 5;
+                          double centerX = placement.blockX() + half;
+                          double centerZ = placement.blockZ() + half;
+                          double dx = centerX - sourceX;
+                          double dz = centerZ - sourceZ;
+                          double distanceSquared = dx * dx + dz * dz;
+                          if (distanceSquared < nearestDistanceSquared) {
+                              nearestDistanceSquared = distanceSquared;
+                              nearest = placement;
+                          }
+                      }
+                  }
+
+                  if (nearest == null) {
+                      source.sendFailure(Component.literal("No Basecamp has been generated yet."));
+                      return 0;
+                  }
+
+                  int half = nearest.large() ? 13 : 5;
+                  int x = nearest.blockX() + half;
+                  int y = nearest.y() + 2;
+                  int z = nearest.blockZ() + half;
+                  long distance = Math.round(Math.sqrt(nearestDistanceSquared));
+                  source.sendSuccess(
+                          () -> Component.literal("Nearest Basecamp: [" + x + ", " + y + ", " + z + "] (" + distance + " blocks away)"),
+                          false
+                  );
+                  return 1;
+              }
+          }
+          JAVA
+
+      - name: Register Basecamp command
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("src/main/java/net/njw/aftertheend/AfterTheEnd.java")
+          text = path.read_text()
+          text = text.replace(
+              "import net.njw.aftertheend.city.basecamp.BasecampGenerationHandler;",
+              "import net.njw.aftertheend.city.basecamp.BasecampCommand;\nimport net.njw.aftertheend.city.basecamp.BasecampGenerationHandler;"
+          )
+          text = text.replace(
+              "NeoForge.EVENT_BUS.register(BasecampGenerationHandler.class);",
+              "NeoForge.EVENT_BUS.register(BasecampGenerationHandler.class);\n        NeoForge.EVENT_BUS.register(BasecampCommand.class);"
+          )
+          path.write_text(text)
+          PY
+
+      - name: Build
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build
+
+      - name: Commit changes and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main/java/net/njw/aftertheend/AfterTheEnd.java \
+                  src/main/java/net/njw/aftertheend/city/basecamp/BasecampPlacementService.java \
+                  src/main/java/net/njw/aftertheend/city/basecamp/BasecampCommand.java
+          git rm .github/workflows/fix-basecamp-placement-locate.yml
+          git commit -m "fix: guarantee basecamp placement and add locate command"
+          git push
