@@ -27,15 +27,8 @@ STONE = {
 VARIANTS = {
     "basecamp_01": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
     "basecamp_mossy": {**STONE, "style": "classic", "outer": "minecraft:light_gray_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "aged_level": 2},
-    "basecamp_red": {**STONE, "style": "classic_red", "outer": "minecraft:red_glazed_terracotta", "primary": "minecraft:orange_glazed_terracotta", "secondary": "minecraft:yellow_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:red_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
-    "basecamp_orange": {**STONE, "style": "classic_orange", "outer": "minecraft:orange_glazed_terracotta", "primary": "minecraft:yellow_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:light_gray_glazed_terracotta", "rune": "minecraft:orange_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "aged_level": 0},
-    "basecamp_yellow": {**STONE, "style": "classic_yellow", "outer": "minecraft:yellow_glazed_terracotta", "primary": "minecraft:white_glazed_terracotta", "secondary": "minecraft:orange_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:yellow_glazed_terracotta", "point": "minecraft:orange_glazed_terracotta", "aged_level": 0},
-    "basecamp_lime": {**STONE, "style": "classic_lime", "outer": "minecraft:lime_glazed_terracotta", "primary": "minecraft:green_glazed_terracotta", "secondary": "minecraft:yellow_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:lime_glazed_terracotta", "point": "minecraft:yellow_glazed_terracotta", "aged_level": 0},
-    "basecamp_green": {**STONE, "style": "classic_green", "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:cyan_glazed_terracotta", "aged_level": 0},
     "basecamp_cyan": {**STONE, "style": "classic_cyan", "outer": "minecraft:cyan_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:cyan_glazed_terracotta", "point": "minecraft:white_glazed_terracotta", "aged_level": 0},
-    "basecamp_light_blue": {**STONE, "style": "classic_light_blue", "outer": "minecraft:light_blue_glazed_terracotta", "primary": "minecraft:white_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:cyan_glazed_terracotta", "aged_level": 0},
-    "basecamp_blue": {**STONE, "style": "classic_blue", "outer": "minecraft:blue_glazed_terracotta", "primary": "minecraft:light_blue_glazed_terracotta", "secondary": "minecraft:white_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:blue_glazed_terracotta", "point": "minecraft:light_blue_glazed_terracotta", "aged_level": 0},
-    "basecamp_purple": {**STONE, "style": "classic_purple", "outer": "minecraft:purple_glazed_terracotta", "primary": "minecraft:blue_glazed_terracotta", "secondary": "minecraft:light_blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:purple_glazed_terracotta", "point": "minecraft:light_blue_glazed_terracotta", "aged_level": 0},
+    "basecamp_green": {**STONE, "style": "classic_green", "outer": "minecraft:green_glazed_terracotta", "primary": "minecraft:lime_glazed_terracotta", "secondary": "minecraft:cyan_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:green_glazed_terracotta", "point": "minecraft:lime_glazed_terracotta", "aged_level": 0},
     "basecamp_white": {**STONE, "style": "classic_white", "outer": "minecraft:white_glazed_terracotta", "primary": "minecraft:light_gray_glazed_terracotta", "secondary": "minecraft:blue_glazed_terracotta", "core": "minecraft:white_glazed_terracotta", "rune": "minecraft:light_blue_glazed_terracotta", "point": "minecraft:blue_glazed_terracotta", "aged_level": 0},
 }
 
@@ -115,16 +108,9 @@ def triangle_variant(dx, dz, apex_z, half_base, base_z, tolerance=0.38):
     return min(segment_distance(dx, dz, *a, *b), segment_distance(dx, dz, *b, *c), segment_distance(dx, dz, *c, *a)) <= tolerance
 
 CLASSIC_MOTIFS = {
-    "classic_red":        (-4.3, 3.8, 3.0, 2.15, 2.75, None),
-    "classic_orange":     (-4.1, 4.0, 2.9, 2.10, 2.70, (0, -3)),
-    "classic_yellow":     (-4.5, 3.6, 3.0, 2.20, 2.80, None),
-    "classic_lime":       (-4.2, 3.9, 2.8, 2.00, 2.65, (0, 3)),
-    "classic_green":      (-4.3, 3.6, 3.2, 2.15, 2.70, None),
-    "classic_cyan":       (-4.1, 4.1, 3.0, 2.25, 2.85, (0, -2)),
-    "classic_light_blue": (-4.4, 3.7, 2.8, 2.10, 2.75, None),
-    "classic_blue":       (-4.2, 3.8, 3.2, 2.20, 2.85, (0, 2)),
-    "classic_purple":     (-4.5, 4.0, 2.8, 2.05, 2.70, None),
-    "classic_white":      (-4.0, 3.6, 3.1, 2.20, 2.80, (0, -3)),
+    "classic_green": (-4.3, 3.6, 3.2, 2.15, 2.70, None),
+    "classic_cyan": (-4.1, 4.1, 3.0, 2.25, 2.85, (0, -2)),
+    "classic_white": (-4.0, 3.6, 3.1, 2.20, 2.80, (0, -3)),
 }
 
 def pattern_block(dx, dz, r, cfg):
