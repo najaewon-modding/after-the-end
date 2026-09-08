@@ -1,5 +1,6 @@
 package net.njw.aftertheend.client.gui;
 
+import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -13,41 +14,24 @@ import net.njw.aftertheend.network.CityTeleportRequestPayload;
 import java.util.List;
 
 public final class CityListScreen extends Screen {
-    private static final int GUI_WIDTH = 224;
-    private static final int GUI_HEIGHT = 184;
-    private static final float GUI_SCALE = 0.90F;
-
-    private static final int OUTLINE_COLOR = 0xFF2B1A0E;
-    private static final int FRAME_OUTER_COLOR = 0xE66B4526;
-    private static final int FRAME_INNER_COLOR = 0xE6A66B35;
-    private static final int SURFACE_COLOR = 0x991A1A1A;
-    private static final int PANEL_COLOR = 0x80141414;
-    private static final int ROW_COLOR = 0x8C1A1A1A;
-    private static final int ROW_HOVER_COLOR = 0xAA3A2A1D;
-    private static final int ROW_SELECTED_COLOR = 0xB86B4526;
-    private static final int BUTTON_COLOR = 0xA61A1A1A;
-    private static final int BUTTON_HOVER_COLOR = 0xCC6B4526;
-    private static final int DISABLED_COLOR = 0x70101010;
-    private static final int ACCENT_COLOR = 0xFFE0A969;
-    private static final int MUTED_COLOR = 0xFFB8AA9A;
-
-    private static final int LIST_X = 10;
-    private static final int LIST_Y = 31;
-    private static final int LIST_WIDTH = 98;
-    private static final int LIST_ROW_HEIGHT = 26;
-    private static final int LIST_ROW_GAP = 2;
+    private static final int CONTENT_WIDTH = 220;
+    private static final int CONTENT_HEIGHT = 166;
+    private static final int LIST_WIDTH = 96;
+    private static final int COLUMN_GAP = 20;
+    private static final int ROW_HEIGHT = 20;
     private static final int VISIBLE_CITY_COUNT = 5;
-    private static final int LIST_VIEWPORT_HEIGHT = VISIBLE_CITY_COUNT * LIST_ROW_HEIGHT + (VISIBLE_CITY_COUNT - 1) * LIST_ROW_GAP;
+    private static final int BUTTON_WIDTH = 72;
+    private static final int BUTTON_HEIGHT = 18;
+    private static final int BUTTON_GAP = 8;
 
-    private static final int DETAIL_X = 118;
-    private static final int DETAIL_Y = 36;
-    private static final int DETAIL_WIDTH = 96;
-
-    private static final int BUTTON_WIDTH = 76;
-    private static final int BUTTON_HEIGHT = 20;
-    private static final int MOVE_BUTTON_X = 34;
-    private static final int CLOSE_BUTTON_X = 114;
-    private static final int BOTTOM_BUTTON_Y = 157;
+    private static final int TEXT_COLOR = 0xFFFFFFFF;
+    private static final int MUTED_COLOR = 0xFFAAAAAA;
+    private static final int DIM_COLOR = 0xFF777777;
+    private static final int SELECTED_COLOR = 0xFFFFFFFF;
+    private static final int HOVER_COLOR = 0xFFDDDDDD;
+    private static final int BUTTON_BACKGROUND = 0x66000000;
+    private static final int BUTTON_HOVER_BACKGROUND = 0x88000000;
+    private static final int SEPARATOR_COLOR = 0x55FFFFFF;
 
     private int selectedIndex;
     private int scrollOffset;
@@ -59,132 +43,117 @@ public final class CityListScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        int screenLeft = getGuiLeft();
-        int screenTop = getGuiTop();
-        double logicalMouseX = screenToGuiX(mouseX);
-        double logicalMouseY = screenToGuiY(mouseY);
+        int left = left();
+        int top = top();
+        int listTop = top + 34;
+        int detailLeft = left + LIST_WIDTH + COLUMN_GAP;
 
-        graphics.pose().pushMatrix();
-        graphics.pose().translate(screenLeft, screenTop);
-        graphics.pose().scale(GUI_SCALE, GUI_SCALE);
+        graphics.centeredText(font, title, width / 2, top, TEXT_COLOR);
+        graphics.horizontalLine(left, left + CONTENT_WIDTH, top + 18, SEPARATOR_COLOR);
 
-        drawFramedSurface(graphics, 0, 0, GUI_WIDTH, GUI_HEIGHT, SURFACE_COLOR);
-        graphics.centeredText(font, title, GUI_WIDTH / 2, 11, 0xFFFFFFFF);
-        drawPanel(graphics, 7, 27, 104, 119);
-        drawPanel(graphics, 114, 27, 103, 119);
+        renderCityList(graphics, mouseX, mouseY, left, listTop);
+        renderCityDetails(graphics, detailLeft, listTop);
+        renderBottomButtons(graphics, mouseX, mouseY, left, top);
 
-        renderCityList(graphics, logicalMouseX, logicalMouseY);
-        renderCityDetails(graphics);
-        renderBottomButtons(graphics, logicalMouseX, logicalMouseY);
-        graphics.pose().popMatrix();
+        if (isInteractive(mouseX, mouseY, left, listTop, top)) graphics.requestCursor(CursorTypes.POINTING_HAND);
     }
 
-    private void renderCityList(GuiGraphicsExtractor graphics, double mouseX, double mouseY) {
+    private void renderCityList(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int left, int listTop) {
         List<ClientCityManager.ClientCity> cities = ClientCityManager.getCities();
         normalizeState(cities);
         int endIndex = Math.min(cities.size(), scrollOffset + VISIBLE_CITY_COUNT);
+
         for (int index = scrollOffset; index < endIndex; index++) {
             ClientCityManager.ClientCity city = cities.get(index);
             int row = index - scrollOffset;
-            int y = LIST_Y + row * (LIST_ROW_HEIGHT + LIST_ROW_GAP);
+            int y = listTop + row * ROW_HEIGHT;
             boolean selected = index == selectedIndex;
-            boolean hovered = isInside(mouseX, mouseY, LIST_X, y, LIST_WIDTH, LIST_ROW_HEIGHT);
-            int fillColor = selected ? ROW_SELECTED_COLOR : hovered ? ROW_HOVER_COLOR : ROW_COLOR;
-            int borderColor = selected ? ACCENT_COLOR : FRAME_OUTER_COLOR;
-            int textColor = city.unlocked() ? 0xFFFFFFFF : 0xFFAAAAAA;
-            graphics.fill(LIST_X, y, LIST_X + LIST_WIDTH, y + LIST_ROW_HEIGHT, fillColor);
-            graphics.outline(LIST_X, y, LIST_WIDTH, LIST_ROW_HEIGHT, borderColor);
-            graphics.centeredText(font, Component.literal(city.name()), LIST_X + LIST_WIDTH / 2, y + 5, textColor);
-            graphics.centeredText(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), LIST_X + LIST_WIDTH / 2, y + 15, city.unlocked() ? 0xFF91C97A : 0xFFE28A78);
+            boolean hovered = isInside(mouseX, mouseY, left, y - 3, LIST_WIDTH, ROW_HEIGHT);
+            int color = selected ? SELECTED_COLOR : hovered ? HOVER_COLOR : city.unlocked() ? MUTED_COLOR : DIM_COLOR;
+            Component marker = Component.literal(selected ? "> " : "  ");
+            graphics.text(font, marker.copy().append(Component.literal(city.name())), left, y, color, false);
+            Component status = Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked");
+            graphics.text(font, status, left + LIST_WIDTH - font.width(status), y, city.unlocked() ? MUTED_COLOR : DIM_COLOR, false);
         }
     }
 
-    private void renderCityDetails(GuiGraphicsExtractor graphics) {
+    private void renderCityDetails(GuiGraphicsExtractor graphics, int x, int y) {
         ClientCityManager.ClientCity city = getSelectedCity();
         if (city == null) {
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.empty"), DETAIL_X, DETAIL_Y, MUTED_COLOR, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.empty"), x, y, MUTED_COLOR, false);
             return;
         }
 
-        graphics.centeredText(font, Component.literal(city.name()), DETAIL_X + DETAIL_WIDTH / 2, DETAIL_Y, 0xFFFFFFFF);
-        graphics.centeredText(font, Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked"), DETAIL_X + DETAIL_WIDTH / 2, DETAIL_Y + 13, city.unlocked() ? 0xFF91C97A : 0xFFE28A78);
-        graphics.fill(DETAIL_X, DETAIL_Y + 26, DETAIL_X + DETAIL_WIDTH, DETAIL_Y + 27, 0x806B4526);
+        graphics.text(font, Component.literal(city.name()), x, y, TEXT_COLOR, false);
+        Component status = Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked");
+        graphics.text(font, status, x, y + 14, city.unlocked() ? MUTED_COLOR : DIM_COLOR, false);
 
-        int y = DETAIL_Y + 34;
+        int detailY = y + 38;
         CityRegion overworldRegion = city.getRegion(Level.OVERWORLD.identifier());
         if (overworldRegion != null) {
             long blockX = (long) overworldRegion.centerChunkX() * 16L;
             long blockZ = (long) overworldRegion.centerChunkZ() * 16L;
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), DETAIL_X, y, MUTED_COLOR, false);
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), DETAIL_X, y + 11, 0xFFFFFFFF, false);
-            y += 31;
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.overworld"), x, detailY, MUTED_COLOR, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), x, detailY + 12, TEXT_COLOR, false);
+            detailY += 34;
         }
 
         CityRegion netherRegion = city.getRegion(Level.NETHER.identifier());
         if (netherRegion != null) {
             long blockX = (long) netherRegion.centerChunkX() * 16L;
             long blockZ = (long) netherRegion.centerChunkZ() * 16L;
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), DETAIL_X, y, MUTED_COLOR, false);
-            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), DETAIL_X, y + 11, 0xFFFFFFFF, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), x, detailY, MUTED_COLOR, false);
+            graphics.text(font, Component.translatable("gui.njw_after_the_end.city_list.coordinates", blockX, blockZ), x, detailY + 12, TEXT_COLOR, false);
         }
     }
 
-    private void renderBottomButtons(GuiGraphicsExtractor graphics, double mouseX, double mouseY) {
+    private void renderBottomButtons(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int left, int top) {
+        int totalWidth = BUTTON_WIDTH * 2 + BUTTON_GAP;
+        int buttonX = left + (CONTENT_WIDTH - totalWidth) / 2;
+        int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity city = getSelectedCity();
         boolean moveEnabled = city != null && city.unlocked();
-        boolean moveHovered = moveEnabled && isInside(mouseX, mouseY, MOVE_BUTTON_X, BOTTOM_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
-        drawButton(graphics, MOVE_BUTTON_X, BOTTOM_BUTTON_Y, Component.translatable("gui.njw_after_the_end.city_list.move"), moveEnabled, moveHovered);
-
-        boolean closeHovered = isInside(mouseX, mouseY, CLOSE_BUTTON_X, BOTTOM_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
-        drawButton(graphics, CLOSE_BUTTON_X, BOTTOM_BUTTON_Y, Component.translatable("gui.njw_after_the_end.city_list.close"), true, closeHovered);
+        drawButton(graphics, buttonX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.move"), moveEnabled, isInside(mouseX, mouseY, buttonX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
+        int closeX = buttonX + BUTTON_WIDTH + BUTTON_GAP;
+        drawButton(graphics, closeX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.close"), true, isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
     }
 
     private void drawButton(GuiGraphicsExtractor graphics, int x, int y, Component label, boolean enabled, boolean hovered) {
-        int fillColor = !enabled ? DISABLED_COLOR : hovered ? BUTTON_HOVER_COLOR : BUTTON_COLOR;
-        int borderColor = hovered && enabled ? ACCENT_COLOR : FRAME_OUTER_COLOR;
-        graphics.fill(x, y, x + BUTTON_WIDTH, y + BUTTON_HEIGHT, fillColor);
-        graphics.outline(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, borderColor);
-        graphics.centeredText(font, label, x + BUTTON_WIDTH / 2, y + 6, enabled ? 0xFFFFFFFF : 0xFF777777);
-    }
-
-    private static void drawFramedSurface(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int surfaceColor) {
-        graphics.fill(x, y, x + width, y + height, FRAME_OUTER_COLOR);
-        graphics.fill(x + 2, y + 2, x + width - 2, y + height - 2, FRAME_INNER_COLOR);
-        graphics.fill(x + 4, y + 4, x + width - 4, y + height - 4, surfaceColor);
-        graphics.outline(x, y, width, height, OUTLINE_COLOR);
-    }
-
-    private static void drawPanel(GuiGraphicsExtractor graphics, int x, int y, int width, int height) {
-        graphics.fill(x, y, x + width, y + height, PANEL_COLOR);
-        graphics.outline(x, y, width, height, 0xCC6B4526);
+        graphics.fill(x, y, x + BUTTON_WIDTH, y + BUTTON_HEIGHT, hovered && enabled ? BUTTON_HOVER_BACKGROUND : BUTTON_BACKGROUND);
+        if (hovered && enabled) graphics.outline(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, 0x88FFFFFF);
+        graphics.centeredText(font, label, x + BUTTON_WIDTH / 2, y + 5, enabled ? TEXT_COLOR : DIM_COLOR);
     }
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-        double mouseX = screenToGuiX(click.x());
-        double mouseY = screenToGuiY(click.y());
+        if (click.button() != 0) return super.mouseClicked(click, doubled);
+        int left = left();
+        int top = top();
+        int listTop = top + 34;
         List<ClientCityManager.ClientCity> cities = ClientCityManager.getCities();
+        int endIndex = Math.min(cities.size(), scrollOffset + VISIBLE_CITY_COUNT);
 
-        if (isInside(mouseX, mouseY, LIST_X, LIST_Y, LIST_WIDTH, LIST_VIEWPORT_HEIGHT)) {
-            int endIndex = Math.min(cities.size(), scrollOffset + VISIBLE_CITY_COUNT);
-            for (int index = scrollOffset; index < endIndex; index++) {
-                int row = index - scrollOffset;
-                int y = LIST_Y + row * (LIST_ROW_HEIGHT + LIST_ROW_GAP);
-                if (isInside(mouseX, mouseY, LIST_X, y, LIST_WIDTH, LIST_ROW_HEIGHT)) {
-                    selectedIndex = index;
-                    return true;
-                }
+        for (int index = scrollOffset; index < endIndex; index++) {
+            int row = index - scrollOffset;
+            int y = listTop + row * ROW_HEIGHT;
+            if (isInside(click.x(), click.y(), left, y - 3, LIST_WIDTH, ROW_HEIGHT)) {
+                selectedIndex = index;
+                return true;
             }
         }
 
+        int totalWidth = BUTTON_WIDTH * 2 + BUTTON_GAP;
+        int moveX = left + (CONTENT_WIDTH - totalWidth) / 2;
+        int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity selectedCity = getSelectedCity();
-        if (selectedCity != null && selectedCity.unlocked() && isInside(mouseX, mouseY, MOVE_BUTTON_X, BOTTOM_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        if (selectedCity != null && selectedCity.unlocked() && isInside(click.x(), click.y(), moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             ClientPacketDistributor.sendToServer(new CityTeleportRequestPayload(selectedCity.id()));
             onClose();
             return true;
         }
 
-        if (isInside(mouseX, mouseY, CLOSE_BUTTON_X, BOTTOM_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        int closeX = moveX + BUTTON_WIDTH + BUTTON_GAP;
+        if (isInside(click.x(), click.y(), closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             onClose();
             return true;
         }
@@ -195,20 +164,27 @@ public final class CityListScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         List<ClientCityManager.ClientCity> cities = ClientCityManager.getCities();
-        if (cities.size() <= VISIBLE_CITY_COUNT) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
-        double logicalMouseX = screenToGuiX(mouseX);
-        double logicalMouseY = screenToGuiY(mouseY);
-        if (!isInside(logicalMouseX, logicalMouseY, LIST_X, LIST_Y, LIST_WIDTH, LIST_VIEWPORT_HEIGHT)) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        if (cities.size() <= VISIBLE_CITY_COUNT || scrollY == 0) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        int left = left();
+        int listTop = top() + 34;
+        if (!isInside(mouseX, mouseY, left, listTop - 3, LIST_WIDTH, VISIBLE_CITY_COUNT * ROW_HEIGHT)) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         int maxScroll = Math.max(0, cities.size() - VISIBLE_CITY_COUNT);
-        if (scrollY > 0.0D) {
-            scrollOffset = Math.max(0, scrollOffset - 1);
-            return true;
+        scrollOffset = Math.clamp(scrollOffset + (scrollY < 0 ? 1 : -1), 0, maxScroll);
+        return true;
+    }
+
+    private boolean isInteractive(double mouseX, double mouseY, int left, int listTop, int top) {
+        int endIndex = Math.min(ClientCityManager.getCities().size(), scrollOffset + VISIBLE_CITY_COUNT);
+        for (int index = scrollOffset; index < endIndex; index++) {
+            int y = listTop + (index - scrollOffset) * ROW_HEIGHT;
+            if (isInside(mouseX, mouseY, left, y - 3, LIST_WIDTH, ROW_HEIGHT)) return true;
         }
-        if (scrollY < 0.0D) {
-            scrollOffset = Math.min(maxScroll, scrollOffset + 1);
-            return true;
-        }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        int totalWidth = BUTTON_WIDTH * 2 + BUTTON_GAP;
+        int moveX = left + (CONTENT_WIDTH - totalWidth) / 2;
+        int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
+        int closeX = moveX + BUTTON_WIDTH + BUTTON_GAP;
+        ClientCityManager.ClientCity city = getSelectedCity();
+        return city != null && city.unlocked() && isInside(mouseX, mouseY, moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT) || isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
     }
 
     private ClientCityManager.ClientCity getSelectedCity() {
@@ -230,9 +206,7 @@ public final class CityListScreen extends Screen {
         if (selectedIndex >= scrollOffset + VISIBLE_CITY_COUNT) scrollOffset = selectedIndex - VISIBLE_CITY_COUNT + 1;
     }
 
-    private int getGuiLeft() { return (width - Math.round(GUI_WIDTH * GUI_SCALE)) / 2; }
-    private int getGuiTop() { return (height - Math.round(GUI_HEIGHT * GUI_SCALE)) / 2; }
-    private double screenToGuiX(double screenX) { return (screenX - getGuiLeft()) / GUI_SCALE; }
-    private double screenToGuiY(double screenY) { return (screenY - getGuiTop()) / GUI_SCALE; }
+    private int left() { return (width - CONTENT_WIDTH) / 2; }
+    private int top() { return Math.max(24, height / 2 - CONTENT_HEIGHT / 2); }
     private static boolean isInside(double mouseX, double mouseY, int x, int y, int width, int height) { return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height; }
 }
