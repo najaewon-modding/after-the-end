@@ -122,7 +122,9 @@ public final class CityAdminCommand {
     private static int listCities(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
         var cities = CityManager.getCities(server);
-        source.sendSuccess(() -> Component.literal("Cities: " + cities.size() + "/" + CityManager.getMaxCityCount(server)), false);
+        int unlockedCount = CityManager.getAccessibleCities(server).size();
+        int lockedCount = CityManager.getLockedCityCount(server);
+        source.sendSuccess(() -> Component.literal("Cities: " + cities.size() + " (unlocked " + unlockedCount + "/" + CityManager.getMaxCityCount(server) + ", locked reserve " + lockedCount + "/" + CityLifecycleService.LOCKED_CITY_RESERVE_COUNT + ")"), false);
         for (City city : cities) {
             boolean accessible = CityManager.isCityAccessible(server, city.id());
             source.sendSuccess(() -> Component.literal("- " + city.id() + " (" + (accessible ? "accessible" : "locked") + ")"), false);
@@ -148,14 +150,14 @@ public final class CityAdminCommand {
 
     private static int showMaxCityCount(CommandSourceStack source) {
         int maximum = CityManager.getMaxCityCount(source.getServer());
-        source.sendSuccess(() -> Component.literal("Maximum city count: " + maximum), false);
+        source.sendSuccess(() -> Component.literal("Maximum unlocked city count: " + maximum), false);
         return maximum;
     }
 
     private static int setMaxCityCount(CommandSourceStack source, int count) {
         try {
             CityLifecycleService.setMaxCityCount(source.getServer(), count);
-            source.sendSuccess(() -> Component.literal("Maximum city count set to " + count), false);
+            source.sendSuccess(() -> Component.literal("Maximum unlocked city count set to " + count), false);
             return count;
         } catch (RuntimeException exception) {
             source.sendFailure(Component.literal(exception.getMessage()));

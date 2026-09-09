@@ -23,6 +23,9 @@ public final class CityManager {
 
     public static Collection<City> getCities(MinecraftServer server) { return getSavedData(server).getCities(); }
     public static Collection<City> getAccessibleCities(MinecraftServer server) { return getSavedData(server).getAccessibleCities(); }
+    public static Collection<City> getLockedCities(MinecraftServer server) { return getSavedData(server).getLockedCities(); }
+    public static int getLockedCityCount(MinecraftServer server) { return getSavedData(server).getLockedCityCount(); }
+    public static City getNextLockedCity(MinecraftServer server) { return getSavedData(server).getNextLockedCity(); }
     public static City getCity(MinecraftServer server, UUID cityId) { return getSavedData(server).getCity(cityId); }
     public static void addCity(MinecraftServer server, City city) { getSavedData(server).addCity(city); }
     public static void addAccessibleCity(MinecraftServer server, City city) { getSavedData(server).addAccessibleCity(city); }

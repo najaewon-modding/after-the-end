@@ -102,7 +102,7 @@ public final class CitySavedData extends SavedData {
         accessibleCityIds.retainAll(cities.keySet());
         cities.putIfAbsent(CityRegistry.STARTING_CITY_ID, CityRegistry.STARTING_CITY_TEMPLATE);
         accessibleCityIds.add(CityRegistry.STARTING_CITY_ID);
-        maxCityCount = Math.max(Math.max(1, maxCityCount), cities.size());
+        maxCityCount = Math.max(Math.max(1, maxCityCount), accessibleCityIds.size());
     }
 
     public Collection<City> getCities() { return List.copyOf(cities.values()); }
@@ -124,6 +124,17 @@ public final class CitySavedData extends SavedData {
         return List.copyOf(result);
     }
 
+    public Collection<City> getLockedCities() {
+        List<City> result = new ArrayList<>();
+        for (City city : cities.values()) if (!accessibleCityIds.contains(city.id())) result.add(city);
+        return List.copyOf(result);
+    }
+    public int getLockedCityCount() { return cities.size() - accessibleCityIds.size(); }
+    public City getNextLockedCity() {
+        for (City city : cities.values()) if (!accessibleCityIds.contains(city.id())) return city;
+        return null;
+    }
+
     public City findCityContaining(ResourceKey<Level> dimension, int blockX, int blockZ, boolean accessibleOnly) {
         if (accessibleOnly) {
             for (UUID cityId : accessibleCityIds) { City city = cities.get(cityId); if (city != null && city.contains(dimension, blockX, blockZ)) return city; }
@@ -140,7 +151,7 @@ public final class CitySavedData extends SavedData {
     }
     public int getMaxCityCount() { return maxCityCount; }
     public void setMaxCityCount(int maxCityCount) {
-        if (maxCityCount < cities.size()) throw new IllegalArgumentException("Maximum city count cannot be lower than current city count.");
+        if (maxCityCount < accessibleCityIds.size()) throw new IllegalArgumentException("Maximum city count cannot be lower than current unlocked city count.");
         if (maxCityCount < 1) throw new IllegalArgumentException("Maximum city count must be at least 1.");
         if (this.maxCityCount != maxCityCount) { this.maxCityCount = maxCityCount; setDirty(); }
     }
