@@ -16,12 +16,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 final class BasecampPlacementPlanner {
@@ -205,25 +202,37 @@ final class BasecampPlacementPlanner {
             return fallback;
         }
 
-        Map<Long, SurfaceSample> surfaceCache = new HashMap<>();
-        Set<Long> missingSurfaceSamples = new HashSet<>();
         Site best = null;
         int totalCenters = 0;
         int validCenters = 0;
+        int nullSampleCount = 0;
+        int cachedSurfaceCount = 0;
         boolean exceptionThrown = false;
         try {
             level.getChunk(chunk.chunkX(), chunk.chunkZ());
             int[] xs = sampledAxis(minX, maxX);
             int[] zs = sampledAxis(minZ, maxZ);
-            totalCenters = xs.length * zs.length;
-            for (int x : xs) {
-                for (int z : zs) {
-                    TerrainAssessment terrain = assessTerrain(level, x, z, size, surfaceCache, missingSurfaceSamples);
-                    if (terrain == null) continue;
-                    validCenters++;
-                    double score = terrain.score() + edgePenalty(bounds, x, z);
-                    if (best == null || score < best.score()) best = new Site(x, z, score, terrain);
-                }
+            FootprintPlan footprint = buildFootprintPlan(xs, zs, size);
+            totalCenters = footprint.centerXs().length;
+
+            SurfaceSample[] surfaceSamples = new SurfaceSample[footprint.sampleXs().length];
+            for (int sampleIndex = 0; sampleIndex < surfaceSamples.length; sampleIndex++) {
+                SurfaceSample sample = readSurfaceSample(level, footprint.sampleXs()[sampleIndex], footprint.sampleZs()[sampleIndex]);
+                surfaceSamples[sampleIndex] = sample;
+                if (sample == null) nullSampleCount++;
+                else cachedSurfaceCount++;
+            }
+
+            int[] supportYs = new int[9];
+            int[] fluidTopYs = new int[9];
+            for (int centerIndex = 0; centerIndex < totalCenters; centerIndex++) {
+                TerrainAssessment terrain = assessTerrain(footprint, surfaceSamples, centerIndex, supportYs, fluidTopYs);
+                if (terrain == null) continue;
+                validCenters++;
+                int x = footprint.centerXs()[centerIndex];
+                int z = footprint.centerZs()[centerIndex];
+                double score = terrain.score() + edgePenalty(bounds, x, z);
+                if (best == null || score < best.score()) best = new Site(x, z, score, terrain);
             }
         } catch (RuntimeException exception) {
             exceptionThrown = true;
@@ -236,11 +245,71 @@ final class BasecampPlacementPlanner {
         boolean fallbackUsed = best == null;
         Site result = fallbackUsed ? emergencySiteInChunk(level, chunk, size, bounds) : best;
         logEvaluation(
-                progressIndex, progressTotal, elapsedSeconds(startedNanos), chunk, size, result, !missingSurfaceSamples.isEmpty(),
-                missingSurfaceSamples.size(), surfaceCache.size(), validCenters, totalCenters,
+                progressIndex, progressTotal, elapsedSeconds(startedNanos), chunk, size, result, nullSampleCount > 0,
+                nullSampleCount, cachedSurfaceCount, validCenters, totalCenters,
                 fallbackUsed, exceptionThrown, false
         );
         return result;
+    }
+
+    private static FootprintPlan buildFootprintPlan(int[] xs, int[] zs, TemplateSize size) {
+        int totalCenters = xs.length * zs.length;
+        int samplesPerCenter = 9;
+        int maximumSamples = totalCenters * samplesPerCenter;
+        int[] centerXs = new int[totalCenters];
+        int[] centerZs = new int[totalCenters];
+        int[] sampleXs = new int[maximumSamples];
+        int[] sampleZs = new int[maximumSamples];
+        int[] sampleIndices = new int[maximumSamples];
+        int uniqueSamples = 0;
+        int centerIndex = 0;
+        int half = size.width() / 2;
+
+        for (int centerX : xs) {
+            for (int centerZ : zs) {
+                centerXs[centerIndex] = centerX;
+                centerZs[centerIndex] = centerZ;
+                int originX = centerX - half;
+                int originZ = centerZ - half;
+                int centerSampleBase = centerIndex * samplesPerCenter;
+                int centerSampleOffset = 0;
+                for (int dxIndex = 0; dxIndex < 3; dxIndex++) {
+                    int sampleX = originX + footprintSampleOffset(size.width(), dxIndex);
+                    for (int dzIndex = 0; dzIndex < 3; dzIndex++) {
+                        int sampleZ = originZ + footprintSampleOffset(size.width(), dzIndex);
+                        int sampleIndex = findSampleIndex(sampleXs, sampleZs, uniqueSamples, sampleX, sampleZ);
+                        if (sampleIndex < 0) {
+                            sampleIndex = uniqueSamples++;
+                            sampleXs[sampleIndex] = sampleX;
+                            sampleZs[sampleIndex] = sampleZ;
+                        }
+                        sampleIndices[centerSampleBase + centerSampleOffset++] = sampleIndex;
+                    }
+                }
+                centerIndex++;
+            }
+        }
+
+        return new FootprintPlan(
+                centerXs,
+                centerZs,
+                java.util.Arrays.copyOf(sampleXs, uniqueSamples),
+                java.util.Arrays.copyOf(sampleZs, uniqueSamples),
+                sampleIndices
+        );
+    }
+
+    private static int findSampleIndex(int[] sampleXs, int[] sampleZs, int count, int x, int z) {
+        for (int index = 0; index < count; index++) {
+            if (sampleXs[index] == x && sampleZs[index] == z) return index;
+        }
+        return -1;
+    }
+
+    private static int footprintSampleOffset(int width, int index) {
+        if (index == 0) return 0;
+        if (index == 1) return width / 2;
+        return width - 1;
     }
 
     private static void logEvaluation(
@@ -439,27 +508,29 @@ final class BasecampPlacementPlanner {
     }
 
     private static TerrainAssessment assessTerrain(
-            ServerLevel level, int centerX, int centerZ, TemplateSize size,
-            Map<Long, SurfaceSample> surfaceCache, Set<Long> missingSurfaceSamples
+            FootprintPlan footprint,
+            SurfaceSample[] surfaceSamples,
+            int centerIndex,
+            int[] supportYs,
+            int[] fluidTopYs
     ) {
-        int half = size.width() / 2;
-        int originX = centerX - half;
-        int originZ = centerZ - half;
-        List<SurfaceSample> samples = new ArrayList<>(9);
-        int[] offsets = footprintSampleOffsets(size.width());
-        for (int dx : offsets) {
-            for (int dz : offsets) {
-                SurfaceSample sample = findSurfaceSample(level, originX + dx, originZ + dz, surfaceCache, missingSurfaceSamples);
-                if (sample == null) return null;
-                samples.add(sample);
-            }
+        int sampleBase = centerIndex * 9;
+        for (int sampleOffset = 0; sampleOffset < 9; sampleOffset++) {
+            SurfaceSample sample = surfaceSamples[footprint.sampleIndices()[sampleBase + sampleOffset]];
+            if (sample == null) return null;
+            supportYs[sampleOffset] = sample.supportY();
+            fluidTopYs[sampleOffset] = sample.fluidTopY();
         }
-        return optimizeSurface(samples);
+        return optimizeSurface(supportYs, fluidTopYs);
     }
 
-    private static TerrainAssessment optimizeSurface(List<SurfaceSample> samples) {
-        int maxSurface = samples.stream().mapToInt(SurfaceSample::supportY).max().orElseThrow();
-        int minSurface = samples.stream().mapToInt(SurfaceSample::supportY).min().orElseThrow();
+    private static TerrainAssessment optimizeSurface(int[] supportYs, int[] fluidTopYs) {
+        int minSurface = supportYs[0];
+        int maxSurface = supportYs[0];
+        for (int index = 1; index < supportYs.length; index++) {
+            minSurface = Math.min(minSurface, supportYs[index]);
+            maxSurface = Math.max(maxSurface, supportYs[index]);
+        }
         TerrainAssessment best = null;
 
         for (int target = minSurface; target <= maxSurface; target++) {
@@ -470,8 +541,8 @@ final class BasecampPlacementPlanner {
             int floatingCells = 0;
             int submergedCells = 0;
 
-            for (SurfaceSample sample : samples) {
-                int difference = sample.supportY() - target;
+            for (int index = 0; index < supportYs.length; index++) {
+                int difference = supportYs[index] - target;
                 if (difference > 0) {
                     buriedCells++;
                     burialDepthCost += burialDepthPenalty(difference);
@@ -479,13 +550,13 @@ final class BasecampPlacementPlanner {
                     floatingCells++;
                     floatingDepthCost += floatingDepthPenalty(-difference);
                 }
-                if (sample.fluidTopY() >= target) {
+                if (fluidTopYs[index] >= target) {
                     submergedCells++;
-                    waterDepthCost += sample.fluidTopY() - target + 1.0;
+                    waterDepthCost += fluidTopYs[index] - target + 1.0;
                 }
             }
 
-            double count = samples.size();
+            double count = supportYs.length;
             double buriedFraction = buriedCells / count;
             double floatingFraction = floatingCells / count;
             double submergedFraction = submergedCells / count;
@@ -534,20 +605,6 @@ final class BasecampPlacementPlanner {
         return EFFECTIVE_REJECT_PENALTY + excess * 2_000_000.0 + excess * excess * 5_000_000.0;
     }
 
-    private static SurfaceSample findSurfaceSample(
-            ServerLevel level, int x, int z, Map<Long, SurfaceSample> surfaceCache, Set<Long> missingSurfaceSamples
-    ) {
-        long key = coordinateKey(x, z);
-        SurfaceSample cached = surfaceCache.get(key);
-        if (cached != null) return cached;
-        if (missingSurfaceSamples.contains(key)) return null;
-
-        SurfaceSample sample = readSurfaceSample(level, x, z);
-        if (sample == null) missingSurfaceSamples.add(key);
-        else surfaceCache.put(key, sample);
-        return sample;
-    }
-
     private static SurfaceSample readSurfaceSample(ServerLevel level, int x, int z) {
         int top = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1;
         if (top < level.getMinY()) return null;
@@ -565,10 +622,6 @@ final class BasecampPlacementPlanner {
             return new SurfaceSample(y + 1, fluidTopY);
         }
         return null;
-    }
-
-    private static int[] footprintSampleOffsets(int width) {
-        return new int[]{0, width / 2, width - 1};
     }
 
     private static SearchBounds searchBounds(CityRegion region, TemplateSize size) {
@@ -597,12 +650,13 @@ final class BasecampPlacementPlanner {
 
     private static int[] sampledAxis(int min, int max) {
         if (min >= max) return new int[]{min};
-        LinkedHashSet<Integer> values = new LinkedHashSet<>();
+        int[] values = new int[CENTER_AXIS_SAMPLES];
+        int count = 0;
         for (int i = 0; i < CENTER_AXIS_SAMPLES; i++) {
             int value = min + (int) Math.round((max - (double) min) * i / (CENTER_AXIS_SAMPLES - 1.0));
-            values.add(value);
+            if (count == 0 || values[count - 1] != value) values[count++] = value;
         }
-        return values.stream().mapToInt(Integer::intValue).toArray();
+        return count == values.length ? values : java.util.Arrays.copyOf(values, count);
     }
 
     private static int clamp(int value, int min, int max) {
@@ -739,6 +793,7 @@ final class BasecampPlacementPlanner {
     private record TemplateSize(int width) { }
     private record ChunkSeed(int sampleIndex, int chunkX, int chunkZ) { }
     private record SurfaceSample(int supportY, int fluidTopY) { }
+    private record FootprintPlan(int[] centerXs, int[] centerZs, int[] sampleXs, int[] sampleZs, int[] sampleIndices) { }
     private record TerrainAssessment(int targetSurfaceY, double score, double roughness, double buriedFraction,
                                      double floatingFraction, double submergedFraction) { }
     private record Site(int centerX, int centerZ, double score, TerrainAssessment terrain) { }
