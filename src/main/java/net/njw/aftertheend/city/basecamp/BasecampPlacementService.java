@@ -28,6 +28,8 @@ public final class BasecampPlacementService {
 
     private static final TemplateSize SMALL = new TemplateSize(11, 7);
     private static final TemplateSize LARGE = new TemplateSize(27, 10);
+    private static final PlacementGeometry SMALL_GEOMETRY = buildPlacementGeometry(SMALL);
+    private static final PlacementGeometry LARGE_GEOMETRY = buildPlacementGeometry(LARGE);
 
     private static final List<ColorVariant> COLORS = List.of(
             new ColorVariant("default", "01", "01_ruined"),
@@ -41,7 +43,16 @@ public final class BasecampPlacementService {
 
     public static List<BasecampPlacement> ensureGenerated(MinecraftServer server, City city) {
         if (BasecampManager.isGenerated(server, city.id())) return BasecampManager.getPlacements(server, city.id());
+        return generate(server, city);
+    }
 
+    static boolean ensureGeneratedIfMissing(MinecraftServer server, City city) {
+        if (BasecampManager.isGenerated(server, city.id())) return false;
+        generate(server, city);
+        return true;
+    }
+
+    private static List<BasecampPlacement> generate(MinecraftServer server, City city) {
         ServerLevel level = server.getLevel(Level.OVERWORLD);
         CityRegion region = city.getRegion(Level.OVERWORLD).orElseThrow(
                 () -> new IllegalStateException("Basecamp generation requires an Overworld city region: " + city.id())
@@ -79,8 +90,7 @@ public final class BasecampPlacementService {
             int half = spec.size().width() / 2;
             int originY = Math.max(level.getMinY(), Math.min(level.getMaxY() - spec.size().height() + 1, site.targetSurfaceY() - 1));
             PlacementCandidate candidate = new PlacementCandidate(
-                    site.centerX(), site.centerZ(), site.centerX() - half, originY, site.centerZ() - half,
-                    originY + 1, site.terrainScore()
+                    site.centerX() - half, originY, site.centerZ() - half, originY + 1
             );
             plans.add(new PlannedBasecamp(spec, candidate));
         }
@@ -141,33 +151,23 @@ public final class BasecampPlacementService {
             cursor.move(0, -1, 0);
         }
         if (cursor.getY() < level.getMinY()) return null;
-        return new SurfaceSample(cursor.getY() + 1, !level.getFluidState(cursor).isEmpty());
+        return new SurfaceSample(cursor.getY() + 1);
     }
 
     private static void clearTreesAndVegetation(ServerLevel level, PlacementCandidate candidate, TemplateSize size) {
-        int minX = candidate.originX() - TREE_CLEAR_MARGIN;
-        int maxX = candidate.originX() + size.width() - 1 + TREE_CLEAR_MARGIN;
-        int minZ = candidate.originZ() - TREE_CLEAR_MARGIN;
-        int maxZ = candidate.originZ() + size.width() - 1 + TREE_CLEAR_MARGIN;
+        PlacementGeometry geometry = placementGeometry(size);
         int minY = Math.max(level.getMinY(), candidate.originY() - 2);
         int maxY = Math.min(level.getMaxY(), candidate.originY() + size.height() + TREE_CLEAR_EXTRA_HEIGHT);
-
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        double clearCenterX = candidate.originX() + (size.width() - 1) / 2.0;
-        double clearCenterZ = candidate.originZ() + (size.width() - 1) / 2.0;
-        double clearRadius = size.width() / 2.0 + TREE_CLEAR_MARGIN;
-        double clearRadiusSquared = clearRadius * clearRadius;
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                double dx = x - clearCenterX;
-                double dz = z - clearCenterZ;
-                if (dx * dx + dz * dz > clearRadiusSquared) continue;
-                for (int y = minY; y <= maxY; y++) {
-                    cursor.set(x, y, z);
-                    BlockState state = level.getBlockState(cursor);
-                    if (state.is(BlockTags.LOGS) || state.is(BlockTags.LEAVES)) {
-                        level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
-                    }
+
+        for (HorizontalOffset offset : geometry.treeClearOffsets()) {
+            int x = candidate.originX() + offset.dx();
+            int z = candidate.originZ() + offset.dz();
+            for (int y = minY; y <= maxY; y++) {
+                cursor.set(x, y, z);
+                BlockState state = level.getBlockState(cursor);
+                if (state.is(BlockTags.LOGS) || state.is(BlockTags.LEAVES)) {
+                    level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
                 }
             }
         }
@@ -185,37 +185,59 @@ public final class BasecampPlacementService {
     }
 
     private static void trimTerrain(ServerLevel level, PlacementCandidate candidate, TemplateSize size) {
+        PlacementGeometry geometry = placementGeometry(size);
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (TrimOffset offset : geometry.trimOffsets()) {
+            int worldX = candidate.originX() + offset.dx();
+            int worldZ = candidate.originZ() + offset.dz();
+            SurfaceSample sample = findSurfaceSample(level, worldX, worldZ);
+            if (sample == null || sample.surfaceY() <= candidate.targetSurfaceY()) continue;
+
+            int trimDepth = Math.min(offset.maxTrim(), sample.surfaceY() - candidate.targetSurfaceY());
+            for (int depth = 0; depth < trimDepth; depth++) {
+                int y = sample.surfaceY() - 1 - depth;
+                cursor.set(worldX, y, worldZ);
+                BlockState state = level.getBlockState(cursor);
+                if (state.is(Blocks.BEDROCK) || level.getBlockEntity(cursor) != null) break;
+                level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
+            }
+        }
+    }
+
+    private static PlacementGeometry placementGeometry(TemplateSize size) {
+        return size.width() == LARGE.width() ? LARGE_GEOMETRY : SMALL_GEOMETRY;
+    }
+
+    private static PlacementGeometry buildPlacementGeometry(TemplateSize size) {
+        List<HorizontalOffset> treeClearOffsets = new ArrayList<>();
+        double clearCenter = (size.width() - 1) / 2.0;
+        double clearRadius = size.width() / 2.0 + TREE_CLEAR_MARGIN;
+        double clearRadiusSquared = clearRadius * clearRadius;
+        for (int dx = -TREE_CLEAR_MARGIN; dx <= size.width() - 1 + TREE_CLEAR_MARGIN; dx++) {
+            for (int dz = -TREE_CLEAR_MARGIN; dz <= size.width() - 1 + TREE_CLEAR_MARGIN; dz++) {
+                double x = dx - clearCenter;
+                double z = dz - clearCenter;
+                if (x * x + z * z <= clearRadiusSquared) treeClearOffsets.add(new HorizontalOffset(dx, dz));
+            }
+        }
+
+        List<TrimOffset> trimOffsets = new ArrayList<>();
         double center = (size.width() - 1) / 2.0;
         double coreRadius = size.width() / 2.0;
         double featherRadius = coreRadius + 1.0;
-        int minLocal = -1;
-        int maxLocal = size.width();
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-
-        for (int dx = minLocal; dx <= maxLocal; dx++) {
-            for (int dz = minLocal; dz <= maxLocal; dz++) {
+        double coreRadiusSquared = coreRadius * coreRadius;
+        double featherRadiusSquared = featherRadius * featherRadius;
+        for (int dx = -1; dx <= size.width(); dx++) {
+            for (int dz = -1; dz <= size.width(); dz++) {
                 double x = dx - center;
                 double z = dz - center;
                 double distanceSquared = x * x + z * z;
-                if (distanceSquared > featherRadius * featherRadius) continue;
-
-                boolean core = distanceSquared <= coreRadius * coreRadius;
-                int maxTrim = core ? MAX_TERRAIN_TRIM_DEPTH : FEATHER_TRIM_DEPTH;
-                int worldX = candidate.originX() + dx;
-                int worldZ = candidate.originZ() + dz;
-                SurfaceSample sample = findSurfaceSample(level, worldX, worldZ);
-                if (sample == null || sample.surfaceY() <= candidate.targetSurfaceY()) continue;
-
-                int trimDepth = Math.min(maxTrim, sample.surfaceY() - candidate.targetSurfaceY());
-                for (int depth = 0; depth < trimDepth; depth++) {
-                    int y = sample.surfaceY() - 1 - depth;
-                    cursor.set(worldX, y, worldZ);
-                    BlockState state = level.getBlockState(cursor);
-                    if (state.is(Blocks.BEDROCK) || level.getBlockEntity(cursor) != null) break;
-                    level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
-                }
+                if (distanceSquared > featherRadiusSquared) continue;
+                int maxTrim = distanceSquared <= coreRadiusSquared ? MAX_TERRAIN_TRIM_DEPTH : FEATHER_TRIM_DEPTH;
+                trimOffsets.add(new TrimOffset(dx, dz, maxTrim));
             }
         }
+        return new PlacementGeometry(List.copyOf(treeClearOffsets), List.copyOf(trimOffsets));
     }
 
     private static long citySeed(long worldSeed, String cityId) {
@@ -236,8 +258,10 @@ public final class BasecampPlacementService {
     private record TemplateSize(int width, int height) { }
     private record BasecampSpec(int index, Identifier templateId, StructureTemplate template, TemplateSize size,
                                 String color, boolean large, boolean ruined) { }
-    private record SurfaceSample(int surfaceY, boolean fluid) { }
-    private record PlacementCandidate(int centerX, int centerZ, int originX, int originY, int originZ,
-                                      int targetSurfaceY, double score) { }
+    private record SurfaceSample(int surfaceY) { }
+    private record PlacementCandidate(int originX, int originY, int originZ, int targetSurfaceY) { }
+    private record HorizontalOffset(int dx, int dz) { }
+    private record TrimOffset(int dx, int dz, int maxTrim) { }
+    private record PlacementGeometry(List<HorizontalOffset> treeClearOffsets, List<TrimOffset> trimOffsets) { }
     private record PlannedBasecamp(BasecampSpec spec, PlacementCandidate candidate) { }
 }

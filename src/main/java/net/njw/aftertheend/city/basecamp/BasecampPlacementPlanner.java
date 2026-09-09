@@ -19,7 +19,9 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class BasecampPlacementPlanner {
     private static final int FPS_CANDIDATE_COUNT = 64;
@@ -38,6 +40,8 @@ final class BasecampPlacementPlanner {
 
     private static final TemplateSize SMALL = new TemplateSize(11);
     private static final TemplateSize LARGE = new TemplateSize(27);
+    private static final int FOOTPRINT_SAMPLE_COUNT = 9;
+    private static final Map<FootprintStencilKey, FootprintStencil> FOOTPRINT_STENCILS = new ConcurrentHashMap<>();
 
     private BasecampPlacementPlanner() { }
 
@@ -210,27 +214,33 @@ final class BasecampPlacementPlanner {
         boolean exceptionThrown = false;
         try {
             level.getChunk(chunk.chunkX(), chunk.chunkZ());
-            int[] xs = sampledAxis(minX, maxX);
-            int[] zs = sampledAxis(minZ, maxZ);
-            FootprintPlan footprint = buildFootprintPlan(xs, zs, size);
+            FootprintStencil footprint = footprintStencil(
+                    minX - chunkMinX, maxX - chunkMinX,
+                    minZ - chunkMinZ, maxZ - chunkMinZ,
+                    size
+            );
             totalCenters = footprint.centerXs().length;
 
             SurfaceSample[] surfaceSamples = new SurfaceSample[footprint.sampleXs().length];
             for (int sampleIndex = 0; sampleIndex < surfaceSamples.length; sampleIndex++) {
-                SurfaceSample sample = readSurfaceSample(level, footprint.sampleXs()[sampleIndex], footprint.sampleZs()[sampleIndex]);
+                SurfaceSample sample = readSurfaceSample(
+                        level,
+                        chunkMinX + footprint.sampleXs()[sampleIndex],
+                        chunkMinZ + footprint.sampleZs()[sampleIndex]
+                );
                 surfaceSamples[sampleIndex] = sample;
                 if (sample == null) nullSampleCount++;
                 else cachedSurfaceCount++;
             }
 
-            int[] supportYs = new int[9];
-            int[] fluidTopYs = new int[9];
+            int[] supportYs = new int[FOOTPRINT_SAMPLE_COUNT];
+            int[] fluidTopYs = new int[FOOTPRINT_SAMPLE_COUNT];
             for (int centerIndex = 0; centerIndex < totalCenters; centerIndex++) {
                 TerrainAssessment terrain = assessTerrain(footprint, surfaceSamples, centerIndex, supportYs, fluidTopYs);
                 if (terrain == null) continue;
                 validCenters++;
-                int x = footprint.centerXs()[centerIndex];
-                int z = footprint.centerZs()[centerIndex];
+                int x = chunkMinX + footprint.centerXs()[centerIndex];
+                int z = chunkMinZ + footprint.centerZs()[centerIndex];
                 double score = terrain.score() + edgePenalty(bounds, x, z);
                 if (best == null || score < best.score()) best = new Site(x, z, score, terrain);
             }
@@ -252,10 +262,22 @@ final class BasecampPlacementPlanner {
         return result;
     }
 
-    private static FootprintPlan buildFootprintPlan(int[] xs, int[] zs, TemplateSize size) {
+    private static FootprintStencil footprintStencil(
+            int minLocalX,
+            int maxLocalX,
+            int minLocalZ,
+            int maxLocalZ,
+            TemplateSize size
+    ) {
+        FootprintStencilKey key = new FootprintStencilKey(minLocalX, maxLocalX, minLocalZ, maxLocalZ, size.width());
+        return FOOTPRINT_STENCILS.computeIfAbsent(key, BasecampPlacementPlanner::buildFootprintStencil);
+    }
+
+    private static FootprintStencil buildFootprintStencil(FootprintStencilKey key) {
+        int[] xs = sampledAxis(key.minLocalX(), key.maxLocalX());
+        int[] zs = sampledAxis(key.minLocalZ(), key.maxLocalZ());
         int totalCenters = xs.length * zs.length;
-        int samplesPerCenter = 9;
-        int maximumSamples = totalCenters * samplesPerCenter;
+        int maximumSamples = totalCenters * FOOTPRINT_SAMPLE_COUNT;
         int[] centerXs = new int[totalCenters];
         int[] centerZs = new int[totalCenters];
         int[] sampleXs = new int[maximumSamples];
@@ -263,7 +285,7 @@ final class BasecampPlacementPlanner {
         int[] sampleIndices = new int[maximumSamples];
         int uniqueSamples = 0;
         int centerIndex = 0;
-        int half = size.width() / 2;
+        int half = key.width() / 2;
 
         for (int centerX : xs) {
             for (int centerZ : zs) {
@@ -271,12 +293,12 @@ final class BasecampPlacementPlanner {
                 centerZs[centerIndex] = centerZ;
                 int originX = centerX - half;
                 int originZ = centerZ - half;
-                int centerSampleBase = centerIndex * samplesPerCenter;
+                int centerSampleBase = centerIndex * FOOTPRINT_SAMPLE_COUNT;
                 int centerSampleOffset = 0;
                 for (int dxIndex = 0; dxIndex < 3; dxIndex++) {
-                    int sampleX = originX + footprintSampleOffset(size.width(), dxIndex);
+                    int sampleX = originX + footprintSampleOffset(key.width(), dxIndex);
                     for (int dzIndex = 0; dzIndex < 3; dzIndex++) {
-                        int sampleZ = originZ + footprintSampleOffset(size.width(), dzIndex);
+                        int sampleZ = originZ + footprintSampleOffset(key.width(), dzIndex);
                         int sampleIndex = findSampleIndex(sampleXs, sampleZs, uniqueSamples, sampleX, sampleZ);
                         if (sampleIndex < 0) {
                             sampleIndex = uniqueSamples++;
@@ -290,11 +312,11 @@ final class BasecampPlacementPlanner {
             }
         }
 
-        return new FootprintPlan(
+        return new FootprintStencil(
                 centerXs,
                 centerZs,
-                java.util.Arrays.copyOf(sampleXs, uniqueSamples),
-                java.util.Arrays.copyOf(sampleZs, uniqueSamples),
+                Arrays.copyOf(sampleXs, uniqueSamples),
+                Arrays.copyOf(sampleZs, uniqueSamples),
                 sampleIndices
         );
     }
@@ -367,34 +389,79 @@ final class BasecampPlacementPlanner {
         if (candidateCount < count) {
             throw new IllegalStateException("Basecamp FPS candidate count " + candidateCount + " is smaller than requested structure count " + count);
         }
+        OptimizerContext context = buildOptimizerContext(candidates, targetDistance);
         SelectionResult globalBest = null;
         List<Double> restartObjectives = new ArrayList<>();
 
         for (int restart = 0; restart < OPTIMIZER_RESTARTS; restart++) {
             int[] selected = restart == 0
-                    ? bestTerrainInitialization(candidates, count)
+                    ? bestTerrainInitialization(context, count)
                     : randomInitialization(candidateCount, count, random);
-            SelectionResult local = improveByJointSwaps(selected, candidates, targetDistance);
+            SelectionResult local = improveByJointSwaps(selected, context);
             restartObjectives.add(local.objective());
             if (globalBest == null || local.objective() < globalBest.objective()) globalBest = local;
         }
 
         if (globalBest == null) {
-            int[] selected = bestTerrainInitialization(candidates, count);
-            globalBest = evaluateSelection(selected, candidates, targetDistance);
+            int[] selected = bestTerrainInitialization(context, count);
+            globalBest = new SelectionResult(Arrays.copyOf(selected, selected.length), evaluateObjective(selected, context), List.of());
         }
         return new SelectionResult(globalBest.selected(), globalBest.objective(), List.copyOf(restartObjectives));
     }
 
-    private static int[] bestTerrainInitialization(List<ChunkEvaluation> candidates, int count) {
-        if (candidates.size() < count) {
-            throw new IllegalStateException("Basecamp optimizer requires at least " + count + " candidates, got " + candidates.size());
+    private static OptimizerContext buildOptimizerContext(List<ChunkEvaluation> candidates, double targetDistance) {
+        int count = candidates.size();
+        double targetScale = Math.max(1.0, targetDistance);
+        double[] terrainScores = new double[count];
+        double[][] pairDistances = new double[count][count];
+        double[][] pairDistancePenalties = new double[count][count];
+        boolean[][] pairOverlaps = new boolean[count][count];
+
+        for (int i = 0; i < count; i++) {
+            Site site = candidates.get(i).small();
+            terrainScores[i] = site == null ? Double.POSITIVE_INFINITY : site.score();
         }
-        Integer[] order = new Integer[candidates.size()];
-        for (int i = 0; i < order.length; i++) order[i] = i;
-        Arrays.sort(order, Comparator.comparingDouble(i -> candidates.get(i).small().score()));
+        int half = SMALL.width() / 2;
+        for (int i = 0; i < count; i++) {
+            Site a = candidates.get(i).small();
+            for (int j = i + 1; j < count; j++) {
+                Site b = candidates.get(j).small();
+                if (a == null || b == null) {
+                    pairDistances[i][j] = pairDistances[j][i] = Double.POSITIVE_INFINITY;
+                    continue;
+                }
+                boolean overlap = overlaps(a, half, b, half);
+                double pairDistance = distance(a.centerX(), a.centerZ(), b.centerX(), b.centerZ());
+                double normalized = pairDistance / targetScale;
+                double pairDistancePenalty = PAIR_DISTANCE_WEIGHT / (0.20 + normalized * normalized);
+                pairOverlaps[i][j] = pairOverlaps[j][i] = overlap;
+                pairDistances[i][j] = pairDistances[j][i] = pairDistance;
+                pairDistancePenalties[i][j] = pairDistancePenalties[j][i] = pairDistancePenalty;
+            }
+        }
+        return new OptimizerContext(terrainScores, pairDistances, pairDistancePenalties, pairOverlaps, targetScale);
+    }
+
+    private static int[] bestTerrainInitialization(OptimizerContext context, int count) {
+        if (context.terrainScores().length < count) {
+            throw new IllegalStateException("Basecamp optimizer requires at least " + count + " candidates, got " + context.terrainScores().length);
+        }
+        boolean[] chosen = new boolean[context.terrainScores().length];
         int[] selected = new int[count];
-        for (int i = 0; i < count; i++) selected[i] = order[i];
+        for (int slot = 0; slot < count; slot++) {
+            int bestIndex = -1;
+            double bestScore = 0.0;
+            for (int candidate = 0; candidate < context.terrainScores().length; candidate++) {
+                if (chosen[candidate]) continue;
+                double score = context.terrainScores()[candidate];
+                if (bestIndex < 0 || Double.compare(score, bestScore) < 0) {
+                    bestIndex = candidate;
+                    bestScore = score;
+                }
+            }
+            selected[slot] = bestIndex;
+            chosen[bestIndex] = true;
+        }
         return selected;
     }
 
@@ -413,33 +480,27 @@ final class BasecampPlacementPlanner {
         return Arrays.copyOf(indices, count);
     }
 
-    private static SelectionResult improveByJointSwaps(
-            int[] initial,
-            List<ChunkEvaluation> candidates,
-            double targetDistance
-    ) {
+    private static SelectionResult improveByJointSwaps(int[] initial, OptimizerContext context) {
         int[] current = Arrays.copyOf(initial, initial.length);
-        SelectionResult currentScore = evaluateSelection(current, candidates, targetDistance);
+        double currentObjective = evaluateObjective(current, context);
 
         for (int pass = 0; pass < OPTIMIZER_MAX_PASSES; pass++) {
-            boolean[] chosen = new boolean[candidates.size()];
+            boolean[] chosen = new boolean[context.terrainScores().length];
             for (int index : current) chosen[index] = true;
-            double bestObjective = currentScore.objective();
+            double bestObjective = currentObjective;
             int bestSlot = -1;
             int bestCandidate = -1;
-            SelectionResult bestScore = currentScore;
 
             for (int slot = 0; slot < current.length; slot++) {
                 int old = current[slot];
-                for (int candidate = 0; candidate < candidates.size(); candidate++) {
+                for (int candidate = 0; candidate < context.terrainScores().length; candidate++) {
                     if (chosen[candidate]) continue;
                     current[slot] = candidate;
-                    SelectionResult score = evaluateSelection(current, candidates, targetDistance);
-                    if (score.objective() + 1.0e-9 < bestObjective) {
-                        bestObjective = score.objective();
+                    double objective = evaluateObjective(current, context);
+                    if (objective + 1.0e-9 < bestObjective) {
+                        bestObjective = objective;
                         bestSlot = slot;
                         bestCandidate = candidate;
-                        bestScore = score;
                     }
                 }
                 current[slot] = old;
@@ -447,54 +508,45 @@ final class BasecampPlacementPlanner {
 
             if (bestSlot < 0) break;
             current[bestSlot] = bestCandidate;
-            currentScore = new SelectionResult(Arrays.copyOf(current, current.length), bestScore.objective(), List.of());
+            currentObjective = bestObjective;
         }
-        return currentScore;
+        return new SelectionResult(Arrays.copyOf(current, current.length), currentObjective, List.of());
     }
 
-    private static SelectionResult evaluateSelection(
-            int[] selected,
-            List<ChunkEvaluation> candidates,
-            double targetDistance
-    ) {
+    private static double evaluateObjective(int[] selected, OptimizerContext context) {
         double terrain = 0.0;
-        Site[] sites = new Site[selected.length];
-        for (int i = 0; i < selected.length; i++) {
-            Site site = candidates.get(selected[i]).small();
-            if (site == null) {
-                return new SelectionResult(Arrays.copyOf(selected, selected.length), Double.POSITIVE_INFINITY, List.of());
-            }
-            sites[i] = site;
-            terrain += site.score();
+        for (int index : selected) {
+            double score = context.terrainScores()[index];
+            if (Double.isInfinite(score)) return Double.POSITIVE_INFINITY;
+            terrain += score;
         }
 
         double pairPenalty = 0.0;
         double minDistance = Double.POSITIVE_INFINITY;
         double distanceSum = 0.0;
         int pairCount = 0;
-        int half = SMALL.width() / 2;
-        for (int i = 0; i < sites.length; i++) {
-            for (int j = i + 1; j < sites.length; j++) {
-                if (overlaps(sites[i], half, sites[j], half)) pairPenalty += OVERLAP_PENALTY;
-                double distance = distance(sites[i].centerX(), sites[i].centerZ(), sites[j].centerX(), sites[j].centerZ());
-                minDistance = Math.min(minDistance, distance);
-                distanceSum += distance;
+        for (int i = 0; i < selected.length; i++) {
+            int a = selected[i];
+            for (int j = i + 1; j < selected.length; j++) {
+                int b = selected[j];
+                if (context.pairOverlaps()[a][b]) pairPenalty += OVERLAP_PENALTY;
+                double pairDistance = context.pairDistances()[a][b];
+                minDistance = Math.min(minDistance, pairDistance);
+                distanceSum += pairDistance;
                 pairCount++;
-                double normalized = distance / Math.max(1.0, targetDistance);
-                pairPenalty += PAIR_DISTANCE_WEIGHT / (0.20 + normalized * normalized);
+                pairPenalty += context.pairDistancePenalties()[a][b];
             }
         }
 
         double minPenalty = 0.0;
         double averageReward = 0.0;
         if (pairCount > 0) {
-            double shortfall = Math.max(0.0, 1.0 - minDistance / Math.max(1.0, targetDistance));
+            double shortfall = Math.max(0.0, 1.0 - minDistance / context.targetScale());
             minPenalty = MIN_DISTANCE_WEIGHT * shortfall * shortfall;
             double averageDistance = distanceSum / pairCount;
-            averageReward = AVERAGE_DISTANCE_REWARD * averageDistance / Math.max(1.0, targetDistance);
+            averageReward = AVERAGE_DISTANCE_REWARD * averageDistance / context.targetScale();
         }
-        double objective = terrain + pairPenalty + minPenalty - averageReward;
-        return new SelectionResult(Arrays.copyOf(selected, selected.length), objective, List.of());
+        return terrain + pairPenalty + minPenalty - averageReward;
     }
 
     private static boolean overlaps(Site a, int halfA, Site b, int halfB) {
@@ -508,14 +560,14 @@ final class BasecampPlacementPlanner {
     }
 
     private static TerrainAssessment assessTerrain(
-            FootprintPlan footprint,
+            FootprintStencil footprint,
             SurfaceSample[] surfaceSamples,
             int centerIndex,
             int[] supportYs,
             int[] fluidTopYs
     ) {
-        int sampleBase = centerIndex * 9;
-        for (int sampleOffset = 0; sampleOffset < 9; sampleOffset++) {
+        int sampleBase = centerIndex * FOOTPRINT_SAMPLE_COUNT;
+        for (int sampleOffset = 0; sampleOffset < FOOTPRINT_SAMPLE_COUNT; sampleOffset++) {
             SurfaceSample sample = surfaceSamples[footprint.sampleIndices()[sampleBase + sampleOffset]];
             if (sample == null) return null;
             supportYs[sampleOffset] = sample.supportY();
@@ -531,7 +583,13 @@ final class BasecampPlacementPlanner {
             minSurface = Math.min(minSurface, supportYs[index]);
             maxSurface = Math.max(maxSurface, supportYs[index]);
         }
-        TerrainAssessment best = null;
+
+        int bestTarget = minSurface;
+        double bestScore = Double.POSITIVE_INFINITY;
+        double bestBuriedFraction = 0.0;
+        double bestFloatingFraction = 0.0;
+        double bestSubmergedFraction = 0.0;
+        double roughness = maxSurface - minSurface;
 
         for (int target = minSurface; target <= maxSurface; target++) {
             double burialDepthCost = 0.0;
@@ -560,7 +618,6 @@ final class BasecampPlacementPlanner {
             double buriedFraction = buriedCells / count;
             double floatingFraction = floatingCells / count;
             double submergedFraction = submergedCells / count;
-            double roughness = maxSurface - minSurface;
             double score = (burialDepthCost + floatingDepthCost) / count
                     + quarterFractionPenalty(buriedFraction)
                     + quarterFractionPenalty(floatingFraction)
@@ -568,12 +625,17 @@ final class BasecampPlacementPlanner {
                     + (waterDepthCost / count) * 20.0
                     + roughness * 0.30;
 
-            TerrainAssessment assessment = new TerrainAssessment(
-                    target, score, roughness, buriedFraction, floatingFraction, submergedFraction
-            );
-            if (best == null || assessment.score() < best.score()) best = assessment;
+            if (score < bestScore) {
+                bestTarget = target;
+                bestScore = score;
+                bestBuriedFraction = buriedFraction;
+                bestFloatingFraction = floatingFraction;
+                bestSubmergedFraction = submergedFraction;
+            }
         }
-        return best;
+        return new TerrainAssessment(
+                bestTarget, bestScore, roughness, bestBuriedFraction, bestFloatingFraction, bestSubmergedFraction
+        );
     }
 
     private static double burialDepthPenalty(int depth) {
@@ -669,13 +731,6 @@ final class BasecampPlacementPlanner {
         return Math.sqrt(dx * dx + dz * dz);
     }
 
-    private static long chunkKey(int x, int z) {
-        return coordinateKey(x, z);
-    }
-
-    private static long coordinateKey(int x, int z) {
-        return ((long) x << 32) ^ (z & 0xffffffffL);
-    }
 
     private static long mix(long value) {
         value ^= value >>> 33;
@@ -793,12 +848,15 @@ final class BasecampPlacementPlanner {
     private record TemplateSize(int width) { }
     private record ChunkSeed(int sampleIndex, int chunkX, int chunkZ) { }
     private record SurfaceSample(int supportY, int fluidTopY) { }
-    private record FootprintPlan(int[] centerXs, int[] centerZs, int[] sampleXs, int[] sampleZs, int[] sampleIndices) { }
+    private record FootprintStencilKey(int minLocalX, int maxLocalX, int minLocalZ, int maxLocalZ, int width) { }
+    private record FootprintStencil(int[] centerXs, int[] centerZs, int[] sampleXs, int[] sampleZs, int[] sampleIndices) { }
     private record TerrainAssessment(int targetSurfaceY, double score, double roughness, double buriedFraction,
                                      double floatingFraction, double submergedFraction) { }
     private record Site(int centerX, int centerZ, double score, TerrainAssessment terrain) { }
     private record ChunkEvaluation(ChunkSeed chunk, Site small) { }
     private record ChosenSite(ChunkEvaluation candidate, Site site, boolean large) { }
     private record SearchBounds(int minCenterX, int maxCenterX, int minCenterZ, int maxCenterZ) { }
+    private record OptimizerContext(double[] terrainScores, double[][] pairDistances, double[][] pairDistancePenalties,
+                                    boolean[][] pairOverlaps, double targetScale) { }
     private record SelectionResult(int[] selected, double objective, List<Double> restartObjectives) { }
 }

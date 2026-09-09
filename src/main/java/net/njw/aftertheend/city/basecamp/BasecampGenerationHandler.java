@@ -15,9 +15,7 @@ public final class BasecampGenerationHandler {
         MinecraftServer server = event.getServer();
         int generated = 0;
         for (City city : CityManager.getCities(server)) {
-            if (BasecampManager.isGenerated(server, city.id())) continue;
-            BasecampPlacementService.ensureGenerated(server, city);
-            generated++;
+            if (BasecampPlacementService.ensureGeneratedIfMissing(server, city)) generated++;
         }
         if (generated > 0) AfterTheEnd.LOGGER.info("Generated missing Basecamps for {} city/cities during server startup.", generated);
     }
