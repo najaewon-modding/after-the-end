@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 final class BasecampPlacementPlanner {
-    private static final int FPS_CANDIDATE_COUNT = 128;
+    private static final int FPS_CANDIDATE_COUNT = 64;
     private static final int CENTER_AXIS_SAMPLES = 4;
     private static final int OPTIMIZER_RESTARTS = 16;
     private static final int OPTIMIZER_MAX_PASSES = 12;
@@ -192,6 +192,7 @@ final class BasecampPlacementPlanner {
             int progressIndex,
             int progressTotal
     ) {
+        long startedNanos = System.nanoTime();
         int chunkMinX = chunk.chunkX() << 4;
         int chunkMinZ = chunk.chunkZ() << 4;
         int minX = Math.max(chunkMinX, bounds.minCenterX());
@@ -200,7 +201,7 @@ final class BasecampPlacementPlanner {
         int maxZ = Math.min(chunkMinZ + 15, bounds.maxCenterZ());
         if (minX > maxX || minZ > maxZ) {
             Site fallback = emergencySiteInChunk(level, chunk, size, bounds);
-            logEvaluation(progressIndex, progressTotal, chunk, size, fallback, false, 0, 0, 0, 0, true, false, true);
+            logEvaluation(progressIndex, progressTotal, elapsedSeconds(startedNanos), chunk, size, fallback, false, 0, 0, 0, 0, true, false, true);
             return fallback;
         }
 
@@ -235,7 +236,7 @@ final class BasecampPlacementPlanner {
         boolean fallbackUsed = best == null;
         Site result = fallbackUsed ? emergencySiteInChunk(level, chunk, size, bounds) : best;
         logEvaluation(
-                progressIndex, progressTotal, chunk, size, result, !missingSurfaceSamples.isEmpty(),
+                progressIndex, progressTotal, elapsedSeconds(startedNanos), chunk, size, result, !missingSurfaceSamples.isEmpty(),
                 missingSurfaceSamples.size(), surfaceCache.size(), validCenters, totalCenters,
                 fallbackUsed, exceptionThrown, false
         );
@@ -245,6 +246,7 @@ final class BasecampPlacementPlanner {
     private static void logEvaluation(
             int progressIndex,
             int progressTotal,
+            double elapsedSeconds,
             ChunkSeed chunk,
             TemplateSize size,
             Site site,
@@ -258,8 +260,8 @@ final class BasecampPlacementPlanner {
             boolean boundsInvalid
     ) {
         AfterTheEnd.LOGGER.info(
-                "Basecamp eval [{}/{}] chunk=({}, {}) size={} score={} surfaceSampleNull={} nullSampleCount={} cachedSurfaceCount={} validCenters={}/{} fallback={} exception={} boundsInvalid={}",
-                progressIndex, progressTotal, chunk.chunkX(), chunk.chunkZ(), size.width(), format(site.score()),
+                "Basecamp eval [{}/{}] {}sec chunk=({}, {}) size={} score={} surfaceSampleNull={} nullSampleCount={} cachedSurfaceCount={} validCenters={}/{} fallback={} exception={} boundsInvalid={}",
+                progressIndex, progressTotal, formatSeconds(elapsedSeconds), chunk.chunkX(), chunk.chunkZ(), size.width(), format(site.score()),
                 surfaceSampleNull, nullSampleCount, cachedSurfaceCount, validCenters, totalCenters,
                 fallback, exception, boundsInvalid
         );
@@ -699,6 +701,14 @@ final class BasecampPlacementPlanner {
                 .append(format(site.score())).append(',').append(format(terrain.buriedFraction())).append(',')
                 .append(format(terrain.floatingFraction())).append(',').append(format(terrain.submergedFraction())).append(',')
                 .append(selected).append(',').append(specIndex).append('\n');
+    }
+
+    private static double elapsedSeconds(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000_000.0;
+    }
+
+    private static String formatSeconds(double value) {
+        return String.format(Locale.ROOT, "%.2f", value);
     }
 
     private static String format(double value) {
