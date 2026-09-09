@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city.command;
 
+import java.util.UUID;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.commands.CommandSourceStack;
@@ -62,8 +63,13 @@ public final class CityAdminCommand {
     }
 
     private static int unlockCity(CommandSourceStack source, String cityId) {
+        UUID id;
+        try { id = UUID.fromString(cityId); } catch (IllegalArgumentException exception) {
+            source.sendFailure(Component.literal("Invalid city UUID: " + cityId));
+            return 0;
+        }
         try {
-            CityLifecycleService.unlockCity(source.getServer(), cityId);
+            CityLifecycleService.unlockCity(source.getServer(), id);
             source.sendSuccess(() -> Component.literal("Unlocked city: " + cityId), false);
             return 1;
         } catch (RuntimeException exception) {
@@ -73,8 +79,13 @@ public final class CityAdminCommand {
     }
 
     private static int deleteCity(CommandSourceStack source, String cityId) {
+        UUID id;
+        try { id = UUID.fromString(cityId); } catch (IllegalArgumentException exception) {
+            source.sendFailure(Component.literal("Invalid city UUID: " + cityId));
+            return 0;
+        }
         try {
-            CityLifecycleService.deleteCity(source.getServer(), cityId);
+            CityLifecycleService.deleteCity(source.getServer(), id);
             source.sendSuccess(() -> Component.literal("Deleted city: " + cityId), false);
             return 1;
         } catch (RuntimeException exception) {
@@ -84,7 +95,12 @@ public final class CityAdminCommand {
     }
 
     private static int loadCity(CommandSourceStack source, String cityId) {
-        City city = CityManager.getCity(source.getServer(), cityId);
+        UUID id;
+        try { id = UUID.fromString(cityId); } catch (IllegalArgumentException exception) {
+            source.sendFailure(Component.literal("Invalid city UUID: " + cityId));
+            return 0;
+        }
+        City city = CityManager.getCity(source.getServer(), id);
         if (city == null) {
             source.sendFailure(Component.literal("Unknown city: " + cityId));
             return 0;
@@ -115,7 +131,12 @@ public final class CityAdminCommand {
     }
 
     private static int showCityInfo(CommandSourceStack source, String cityId) {
-        City city = CityManager.getCity(source.getServer(), cityId);
+        UUID id;
+        try { id = UUID.fromString(cityId); } catch (IllegalArgumentException exception) {
+            source.sendFailure(Component.literal("Invalid city UUID: " + cityId));
+            return 0;
+        }
+        City city = CityManager.getCity(source.getServer(), id);
         if (city == null) {
             source.sendFailure(Component.literal("Unknown city: " + cityId));
             return 0;

@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city.placement;
 
+import java.util.UUID;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
@@ -66,7 +67,7 @@ public final class CityPlacementService {
      */
     public static City placeLockedCity(
             MinecraftServer server,
-            String cityId,
+            UUID cityId,
             String cityName
     ) {
         City city =
@@ -93,7 +94,7 @@ public final class CityPlacementService {
      */
     public static City placeAccessibleCity(
             MinecraftServer server,
-            String cityId,
+            UUID cityId,
             String cityName
     ) {
         City city =
@@ -119,7 +120,7 @@ public final class CityPlacementService {
 
     private static City createCity(
             MinecraftServer server,
-            String cityId,
+            UUID cityId,
             String cityName
     ) {
         /*

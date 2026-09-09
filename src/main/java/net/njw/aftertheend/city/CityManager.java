@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city;
 
+import java.util.UUID;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
@@ -22,26 +23,25 @@ public final class CityManager {
 
     public static Collection<City> getCities(MinecraftServer server) { return getSavedData(server).getCities(); }
     public static Collection<City> getAccessibleCities(MinecraftServer server) { return getSavedData(server).getAccessibleCities(); }
-    public static City getCity(MinecraftServer server, String cityId) { return getSavedData(server).getCity(cityId); }
+    public static City getCity(MinecraftServer server, UUID cityId) { return getSavedData(server).getCity(cityId); }
     public static void addCity(MinecraftServer server, City city) { getSavedData(server).addCity(city); }
     public static void addAccessibleCity(MinecraftServer server, City city) { getSavedData(server).addAccessibleCity(city); }
-    public static void removeCity(MinecraftServer server, String cityId) { getSavedData(server).removeCity(cityId); }
-    public static boolean isCityAccessible(MinecraftServer server, String cityId) { return getSavedData(server).isCityAccessible(cityId); }
-    public static void unlockCity(MinecraftServer server, String cityId) { getSavedData(server).unlockCity(cityId); }
+    public static void removeCity(MinecraftServer server, UUID cityId) { getSavedData(server).removeCity(cityId); }
+    public static boolean isCityAccessible(MinecraftServer server, UUID cityId) { return getSavedData(server).isCityAccessible(cityId); }
+    public static void unlockCity(MinecraftServer server, UUID cityId) { getSavedData(server).unlockCity(cityId); }
     public static int getMaxCityCount(MinecraftServer server) { return getSavedData(server).getMaxCityCount(); }
     public static void setMaxCityCount(MinecraftServer server, int maxCityCount) { getSavedData(server).setMaxCityCount(maxCityCount); }
-    public static long reserveNextCitySequence(MinecraftServer server) { return getSavedData(server).reserveNextCitySequence(); }
 
-    public static CitySavedData.CityArrivalPosition getCityArrivalPosition(MinecraftServer server, String cityId, ResourceKey<Level> dimension) {
+    public static CitySavedData.CityArrivalPosition getCityArrivalPosition(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension) {
         return getSavedData(server).getCityArrivalPosition(cityId, dimension);
     }
-    public static void setCityArrivalPosition(MinecraftServer server, String cityId, ResourceKey<Level> dimension, int blockX, int y, int blockZ) {
+    public static void setCityArrivalPosition(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension, int blockX, int y, int blockZ) {
         getSavedData(server).setCityArrivalPosition(cityId, dimension, blockX, y, blockZ);
     }
-    public static void clearCityArrivalPosition(MinecraftServer server, String cityId, ResourceKey<Level> dimension) {
+    public static void clearCityArrivalPosition(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension) {
         getSavedData(server).clearCityArrivalPosition(cityId, dimension);
     }
-    public static void clearCityArrivalPositions(MinecraftServer server, String cityId) { getSavedData(server).clearCityArrivalPositions(cityId); }
+    public static void clearCityArrivalPositions(MinecraftServer server, UUID cityId) { getSavedData(server).clearCityArrivalPositions(cityId); }
 
     public static City findCityContaining(MinecraftServer server, ResourceKey<Level> dimension, int blockX, int blockZ) {
         return getSavedData(server).findCityContaining(dimension, blockX, blockZ, false);

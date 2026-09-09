@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city.generation;
 
+import java.util.UUID;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -33,7 +34,7 @@ public final class CityPregenerationHandler {
     private static CitySavedData savedData;
     private static boolean active;
     private static volatile boolean maintenanceActive;
-    private static String activeCityId;
+    private static UUID activeCityId;
 
     private CityPregenerationHandler() {
     }
@@ -131,7 +132,7 @@ public final class CityPregenerationHandler {
         }
 
         if (currentTaskIndex >= tasks.size()) {
-            String completedCityId = activeCityId;
+            UUID completedCityId = activeCityId;
             resetRuntimeState();
             AfterTheEnd.LOGGER.info("City chunk loading completed: city={}. Player connections are enabled again.", completedCityId);
         }
@@ -161,7 +162,7 @@ public final class CityPregenerationHandler {
         AfterTheEnd.LOGGER.info("City load completed: city={}, dimension={} ({}/{})", task.cityId(), task.dimension().identifier(), task.pregenerator().getGeneratedChunks(), task.pregenerator().getTotalChunks());
     }
 
-    public static void removeCity(String cityId) {
+    public static void removeCity(UUID cityId) {
         if (!cityId.equals(activeCityId)) return;
         AfterTheEnd.LOGGER.warn("Active city chunk loading canceled because city {} was removed. Player connections are enabled again.", cityId);
         resetRuntimeState();
@@ -182,5 +183,5 @@ public final class CityPregenerationHandler {
         activeCityId = null;
     }
 
-    private record PregenerationTask(String cityId, ResourceKey<Level> dimension, CityPregenerator pregenerator) { }
+    private record PregenerationTask(UUID cityId, ResourceKey<Level> dimension, CityPregenerator pregenerator) { }
 }

@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city.basecamp;
 
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -238,6 +239,10 @@ public final class BasecampPlacementService {
             }
         }
         return new PlacementGeometry(List.copyOf(treeClearOffsets), List.copyOf(trimOffsets));
+    }
+
+    private static long citySeed(long worldSeed, UUID cityId) {
+        return citySeed(worldSeed, cityId.toString());
     }
 
     private static long citySeed(long worldSeed, String cityId) {

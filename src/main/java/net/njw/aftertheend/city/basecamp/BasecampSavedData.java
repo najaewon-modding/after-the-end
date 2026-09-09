@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city.basecamp;
 
+import java.util.UUID;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.Identifier;
@@ -14,7 +15,8 @@ import java.util.Map;
 import java.util.Set;
 
 public final class BasecampSavedData extends SavedData {
-    private static final Codec<Set<String>> GENERATED_CITY_IDS_CODEC = Codec.STRING.listOf().xmap(
+    private static final Codec<UUID> UUID_CODEC = Codec.STRING.xmap(UUID::fromString, UUID::toString);
+    private static final Codec<Set<UUID>> GENERATED_CITY_IDS_CODEC = UUID_CODEC.listOf().xmap(
             LinkedHashSet::new,
             set -> new ArrayList<>(set)
     );
@@ -30,9 +32,9 @@ public final class BasecampSavedData extends SavedData {
             null
     );
 
-    private final Set<String> generatedCityIds;
+    private final Set<UUID> generatedCityIds;
     private final List<BasecampPlacement> placements;
-    private final Map<String, List<BasecampPlacement>> placementsByCity;
+    private final Map<UUID, List<BasecampPlacement>> placementsByCity;
 
     public BasecampSavedData() {
         generatedCityIds = new LinkedHashSet<>();
@@ -40,21 +42,21 @@ public final class BasecampSavedData extends SavedData {
         placementsByCity = new HashMap<>();
     }
 
-    private BasecampSavedData(Set<String> generatedCityIds, List<BasecampPlacement> placements) {
+    private BasecampSavedData(Set<UUID> generatedCityIds, List<BasecampPlacement> placements) {
         this.generatedCityIds = new LinkedHashSet<>(generatedCityIds);
         this.placements = new ArrayList<>(placements);
         this.placementsByCity = buildPlacementIndex(this.placements);
     }
 
-    public boolean isGenerated(String cityId) {
+    public boolean isGenerated(UUID cityId) {
         return generatedCityIds.contains(cityId);
     }
 
-    public List<BasecampPlacement> getPlacements(String cityId) {
+    public List<BasecampPlacement> getPlacements(UUID cityId) {
         return placementsByCity.getOrDefault(cityId, List.of());
     }
 
-    public void markGenerated(String cityId, List<BasecampPlacement> cityPlacements) {
+    public void markGenerated(UUID cityId, List<BasecampPlacement> cityPlacements) {
         placements.removeIf(placement -> placement.cityId().equals(cityId));
         placements.addAll(cityPlacements);
         placementsByCity.put(cityId, List.copyOf(cityPlacements));
@@ -62,15 +64,15 @@ public final class BasecampSavedData extends SavedData {
         setDirty();
     }
 
-    public void removeCity(String cityId) {
+    public void removeCity(UUID cityId) {
         boolean changed = generatedCityIds.remove(cityId);
         changed |= placements.removeIf(placement -> placement.cityId().equals(cityId));
         placementsByCity.remove(cityId);
         if (changed) setDirty();
     }
 
-    private static Map<String, List<BasecampPlacement>> buildPlacementIndex(List<BasecampPlacement> placements) {
-        Map<String, List<BasecampPlacement>> grouped = new HashMap<>();
+    private static Map<UUID, List<BasecampPlacement>> buildPlacementIndex(List<BasecampPlacement> placements) {
+        Map<UUID, List<BasecampPlacement>> grouped = new HashMap<>();
         for (BasecampPlacement placement : placements) {
             grouped.computeIfAbsent(placement.cityId(), ignored -> new ArrayList<>()).add(placement);
         }

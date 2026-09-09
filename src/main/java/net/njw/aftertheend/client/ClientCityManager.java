@@ -1,5 +1,6 @@
 package net.njw.aftertheend.client;
 
+import java.util.UUID;
 import net.minecraft.resources.Identifier;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -122,7 +123,7 @@ public final class ClientCityManager {
      */
 
     public record ClientCity(
-            String id,
+            UUID id,
             String name,
             boolean unlocked,
             Map<Identifier, CityRegion> regions

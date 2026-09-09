@@ -1,10 +1,11 @@
 package net.njw.aftertheend.city.basecamp;
 
+import java.util.UUID;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 public record BasecampPlacement(
-        String cityId,
+        UUID cityId,
         String templateId,
         int blockX,
         int y,
@@ -13,8 +14,10 @@ public record BasecampPlacement(
         boolean ruined,
         String color
 ) {
+    private static final Codec<UUID> UUID_CODEC = Codec.STRING.xmap(UUID::fromString, UUID::toString);
+
     public static final Codec<BasecampPlacement> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-            Codec.STRING.fieldOf("cityId").forGetter(BasecampPlacement::cityId),
+            UUID_CODEC.fieldOf("cityId").forGetter(BasecampPlacement::cityId),
             Codec.STRING.fieldOf("templateId").forGetter(BasecampPlacement::templateId),
             Codec.INT.fieldOf("blockX").forGetter(BasecampPlacement::blockX),
             Codec.INT.fieldOf("y").forGetter(BasecampPlacement::y),

@@ -21,6 +21,7 @@ import java.util.UUID;
 
 public final class CitySavedData extends SavedData {
     public static final int DEFAULT_MAX_CITY_COUNT = 5;
+    private static final Codec<UUID> UUID_CODEC = Codec.STRING.xmap(UUID::fromString, UUID::toString);
 
     private static final Codec<SafePosition> SAFE_POSITION_CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Level.RESOURCE_KEY_CODEC.fieldOf("dimension").forGetter(SafePosition::dimension),
@@ -33,15 +34,15 @@ public final class CitySavedData extends SavedData {
         for (String value : list) result.add(UUID.fromString(value));
         return result;
     }, set -> set.stream().map(UUID::toString).sorted().toList());
-    private static final Codec<Map<String, City>> CITIES_CODEC = City.CODEC.listOf().xmap(list -> {
-        Map<String, City> result = new LinkedHashMap<>();
+    private static final Codec<Map<UUID, City>> CITIES_CODEC = City.CODEC.listOf().xmap(list -> {
+        Map<UUID, City> result = new LinkedHashMap<>();
         for (City city : list) {
             City previous = result.putIfAbsent(city.id(), city);
             if (previous != null) throw new IllegalArgumentException("Duplicate city id: " + city.id());
         }
         return result;
     }, map -> new ArrayList<>(map.values()));
-    private static final Codec<Set<String>> ACCESSIBLE_CITY_IDS_CODEC = Codec.STRING.listOf().xmap(LinkedHashSet::new, set -> new ArrayList<>(set));
+    private static final Codec<Set<UUID>> ACCESSIBLE_CITY_IDS_CODEC = UUID_CODEC.listOf().xmap(LinkedHashSet::new, set -> new ArrayList<>(set));
     private static final Codec<CityArrivalPosition> CITY_ARRIVAL_POSITION_CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.INT.fieldOf("blockX").forGetter(CityArrivalPosition::blockX), Codec.INT.fieldOf("y").forGetter(CityArrivalPosition::y), Codec.INT.fieldOf("blockZ").forGetter(CityArrivalPosition::blockZ)
     ).apply(instance, CityArrivalPosition::new));
@@ -62,38 +63,34 @@ public final class CitySavedData extends SavedData {
                     CITIES_CODEC.optionalFieldOf("cities", Map.of()).forGetter(data -> data.cities),
                     ACCESSIBLE_CITY_IDS_CODEC.optionalFieldOf("accessibleCityIds", Set.of()).forGetter(data -> data.accessibleCityIds),
                     CITY_ARRIVAL_POSITIONS_CODEC.optionalFieldOf("cityArrivalPositions", Map.of()).forGetter(CitySavedData::serializeCityArrivalPositions),
-                    Codec.INT.optionalFieldOf("maxCityCount", DEFAULT_MAX_CITY_COUNT).forGetter(data -> data.maxCityCount),
-                    Codec.LONG.optionalFieldOf("nextCitySequence", 1L).forGetter(data -> data.nextCitySequence)
+                    Codec.INT.optionalFieldOf("maxCityCount", DEFAULT_MAX_CITY_COUNT).forGetter(data -> data.maxCityCount)
             ).apply(instance, CitySavedData::new)), null);
 
     private final Map<PlayerDimensionKey, SafePosition> playerPositions = new HashMap<>();
     private final Set<UUID> pendingReturns;
     private boolean structureRequirementsInitialized;
     private final Map<CityDimensionKey, PregenerationState> pregenerationStates = new HashMap<>();
-    private final Map<String, City> cities;
-    private final Set<String> accessibleCityIds;
+    private final Map<UUID, City> cities;
+    private final Set<UUID> accessibleCityIds;
     private final Map<CityDimensionKey, CityArrivalPosition> cityArrivalPositions = new HashMap<>();
     private int maxCityCount;
-    private long nextCitySequence;
 
     public CitySavedData() {
         pendingReturns = new LinkedHashSet<>();
         cities = new LinkedHashMap<>();
         accessibleCityIds = new LinkedHashSet<>();
         maxCityCount = DEFAULT_MAX_CITY_COUNT;
-        nextCitySequence = 1L;
         initializeStartingCity();
     }
 
     private CitySavedData(Map<String, SafePosition> positions, Set<UUID> pendingReturns, boolean structureRequirementsInitialized,
-                          Map<String, PregenerationState> pregenerationStates, Map<String, City> cities, Set<String> accessibleCityIds,
-                          Map<String, CityArrivalPosition> cityArrivalPositions, int maxCityCount, long nextCitySequence) {
+                          Map<String, PregenerationState> pregenerationStates, Map<UUID, City> cities, Set<UUID> accessibleCityIds,
+                          Map<String, CityArrivalPosition> cityArrivalPositions, int maxCityCount) {
         this.pendingReturns = new LinkedHashSet<>(pendingReturns);
         this.structureRequirementsInitialized = structureRequirementsInitialized;
         this.cities = new LinkedHashMap<>(cities);
         this.accessibleCityIds = new LinkedHashSet<>(accessibleCityIds);
         this.maxCityCount = maxCityCount;
-        this.nextCitySequence = nextCitySequence;
         deserializePlayerPositions(positions);
         deserializePregenerationStates(pregenerationStates);
         deserializeCityArrivalPositions(cityArrivalPositions);
@@ -106,17 +103,11 @@ public final class CitySavedData extends SavedData {
         cities.putIfAbsent(CityRegistry.STARTING_CITY_ID, CityRegistry.STARTING_CITY_TEMPLATE);
         accessibleCityIds.add(CityRegistry.STARTING_CITY_ID);
         maxCityCount = Math.max(Math.max(1, maxCityCount), cities.size());
-        long minimumNextSequence = 1L;
-        for (String cityId : cities.keySet()) {
-            if (!cityId.startsWith("city_")) continue;
-            try { minimumNextSequence = Math.max(minimumNextSequence, Long.parseLong(cityId.substring(5)) + 1L); } catch (NumberFormatException ignored) { }
-        }
-        nextCitySequence = Math.max(nextCitySequence, minimumNextSequence);
     }
 
     public Collection<City> getCities() { return List.copyOf(cities.values()); }
-    public City getCity(String cityId) { return cities.get(cityId); }
-    public boolean hasCity(String cityId) { return cities.containsKey(cityId); }
+    public City getCity(UUID cityId) { return cities.get(cityId); }
+    public boolean hasCity(UUID cityId) { return cities.containsKey(cityId); }
     public void addCity(City city) { addCity(city, false); }
     public void addAccessibleCity(City city) { addCity(city, true); }
     private void addCity(City city, boolean accessible) {
@@ -129,21 +120,21 @@ public final class CitySavedData extends SavedData {
 
     public Collection<City> getAccessibleCities() {
         List<City> result = new ArrayList<>(accessibleCityIds.size());
-        for (String cityId : accessibleCityIds) { City city = cities.get(cityId); if (city != null) result.add(city); }
+        for (UUID cityId : accessibleCityIds) { City city = cities.get(cityId); if (city != null) result.add(city); }
         return List.copyOf(result);
     }
 
     public City findCityContaining(ResourceKey<Level> dimension, int blockX, int blockZ, boolean accessibleOnly) {
         if (accessibleOnly) {
-            for (String cityId : accessibleCityIds) { City city = cities.get(cityId); if (city != null && city.contains(dimension, blockX, blockZ)) return city; }
+            for (UUID cityId : accessibleCityIds) { City city = cities.get(cityId); if (city != null && city.contains(dimension, blockX, blockZ)) return city; }
         } else {
             for (City city : cities.values()) if (city.contains(dimension, blockX, blockZ)) return city;
         }
         return null;
     }
 
-    public boolean isCityAccessible(String cityId) { return accessibleCityIds.contains(cityId); }
-    public void unlockCity(String cityId) {
+    public boolean isCityAccessible(UUID cityId) { return accessibleCityIds.contains(cityId); }
+    public void unlockCity(UUID cityId) {
         if (!cities.containsKey(cityId)) throw new IllegalArgumentException("Unknown city: " + cityId);
         if (accessibleCityIds.add(cityId)) setDirty();
     }
@@ -153,7 +144,6 @@ public final class CitySavedData extends SavedData {
         if (maxCityCount < 1) throw new IllegalArgumentException("Maximum city count must be at least 1.");
         if (this.maxCityCount != maxCityCount) { this.maxCityCount = maxCityCount; setDirty(); }
     }
-    public long reserveNextCitySequence() { long sequence = nextCitySequence++; setDirty(); return sequence; }
 
     public void setLastValidPosition(UUID playerId, ResourceKey<Level> dimension, double x, double y, double z, float yRot, float xRot) {
         playerPositions.put(new PlayerDimensionKey(playerId, dimension), new SafePosition(dimension, x, y, z, yRot, xRot));
@@ -166,8 +156,8 @@ public final class CitySavedData extends SavedData {
     public boolean areStructureRequirementsInitialized() { return structureRequirementsInitialized; }
     public void markStructureRequirementsInitialized() { if (!structureRequirementsInitialized) { structureRequirementsInitialized = true; setDirty(); } }
 
-    public CityArrivalPosition getCityArrivalPosition(String cityId, ResourceKey<Level> dimension) { return cityArrivalPositions.get(new CityDimensionKey(cityId, dimension)); }
-    public void setCityArrivalPosition(String cityId, ResourceKey<Level> dimension, int blockX, int y, int blockZ) {
+    public CityArrivalPosition getCityArrivalPosition(UUID cityId, ResourceKey<Level> dimension) { return cityArrivalPositions.get(new CityDimensionKey(cityId, dimension)); }
+    public void setCityArrivalPosition(UUID cityId, ResourceKey<Level> dimension, int blockX, int y, int blockZ) {
         City city = cities.get(cityId);
         if (city == null) throw new IllegalArgumentException("Unknown city: " + cityId);
         CityRegion region = city.getRegion(dimension).orElseThrow(() -> new IllegalArgumentException("City does not exist in dimension: " + cityId + " / " + dimension.identifier()));
@@ -175,27 +165,27 @@ public final class CitySavedData extends SavedData {
         CityArrivalPosition position = new CityArrivalPosition(blockX, y, blockZ);
         if (!position.equals(cityArrivalPositions.put(new CityDimensionKey(cityId, dimension), position))) setDirty();
     }
-    public void clearCityArrivalPosition(String cityId, ResourceKey<Level> dimension) { if (cityArrivalPositions.remove(new CityDimensionKey(cityId, dimension)) != null) setDirty(); }
-    public void clearCityArrivalPositions(String cityId) { if (cityArrivalPositions.keySet().removeIf(key -> key.cityId().equals(cityId))) setDirty(); }
+    public void clearCityArrivalPosition(UUID cityId, ResourceKey<Level> dimension) { if (cityArrivalPositions.remove(new CityDimensionKey(cityId, dimension)) != null) setDirty(); }
+    public void clearCityArrivalPositions(UUID cityId) { if (cityArrivalPositions.keySet().removeIf(key -> key.cityId().equals(cityId))) setDirty(); }
 
-    public PregenerationState getPregenerationState(String cityId, ResourceKey<Level> dimension) { return pregenerationStates.getOrDefault(new CityDimensionKey(cityId, dimension), PregenerationState.EMPTY); }
-    public long getPregeneratedChunks(String cityId, ResourceKey<Level> dimension) { return getPregenerationState(cityId, dimension).generatedChunks(); }
-    public boolean isPregenerationCompleted(String cityId, ResourceKey<Level> dimension) { return getPregenerationState(cityId, dimension).completed(); }
-    public void setPregeneratedChunks(String cityId, ResourceKey<Level> dimension, long generatedChunks) {
+    public PregenerationState getPregenerationState(UUID cityId, ResourceKey<Level> dimension) { return pregenerationStates.getOrDefault(new CityDimensionKey(cityId, dimension), PregenerationState.EMPTY); }
+    public long getPregeneratedChunks(UUID cityId, ResourceKey<Level> dimension) { return getPregenerationState(cityId, dimension).generatedChunks(); }
+    public boolean isPregenerationCompleted(UUID cityId, ResourceKey<Level> dimension) { return getPregenerationState(cityId, dimension).completed(); }
+    public void setPregeneratedChunks(UUID cityId, ResourceKey<Level> dimension, long generatedChunks) {
         if (generatedChunks < 0L) throw new IllegalArgumentException("generatedChunks must be greater than or equal to 0.");
         CityDimensionKey key = new CityDimensionKey(cityId, dimension);
         PregenerationState current = pregenerationStates.getOrDefault(key, PregenerationState.EMPTY);
         if (current.generatedChunks() == generatedChunks) return;
         pregenerationStates.put(key, new PregenerationState(generatedChunks, current.completed())); setDirty();
     }
-    public void markPregenerationCompleted(String cityId, ResourceKey<Level> dimension) {
+    public void markPregenerationCompleted(UUID cityId, ResourceKey<Level> dimension) {
         CityDimensionKey key = new CityDimensionKey(cityId, dimension);
         PregenerationState current = pregenerationStates.getOrDefault(key, PregenerationState.EMPTY);
         if (!current.completed()) { pregenerationStates.put(key, new PregenerationState(current.generatedChunks(), true)); setDirty(); }
     }
-    public void resetPregenerationState(String cityId, ResourceKey<Level> dimension) { if (pregenerationStates.remove(new CityDimensionKey(cityId, dimension)) != null) setDirty(); }
+    public void resetPregenerationState(UUID cityId, ResourceKey<Level> dimension) { if (pregenerationStates.remove(new CityDimensionKey(cityId, dimension)) != null) setDirty(); }
 
-    public void removeCity(String cityId) {
+    public void removeCity(UUID cityId) {
         Objects.requireNonNull(cityId, "cityId");
         if (CityRegistry.STARTING_CITY_ID.equals(cityId)) throw new IllegalArgumentException("Starting city cannot be deleted.");
         City removedCity = cities.remove(cityId);
@@ -239,7 +229,7 @@ public final class CitySavedData extends SavedData {
         for (Map.Entry<String, T> entry : serialized.entrySet()) {
             int separator = entry.getKey().indexOf('|');
             if (separator <= 0) continue;
-            String cityId = entry.getKey().substring(0, separator);
+            UUID cityId = UUID.fromString(entry.getKey().substring(0, separator));
             String dimensionId = entry.getKey().substring(separator + 1);
             for (City city : cities.values()) {
                 for (ResourceKey<Level> dimension : city.regions().keySet()) {
@@ -250,7 +240,7 @@ public final class CitySavedData extends SavedData {
     }
 
     private record PlayerDimensionKey(UUID playerId, ResourceKey<Level> dimension) { }
-    private record CityDimensionKey(String cityId, ResourceKey<Level> dimension) { }
+    private record CityDimensionKey(UUID cityId, ResourceKey<Level> dimension) { }
     public record SafePosition(ResourceKey<Level> dimension, double x, double y, double z, float yRot, float xRot) { }
     public record PregenerationState(long generatedChunks, boolean completed) {
         public static final PregenerationState EMPTY = new PregenerationState(0L, false);

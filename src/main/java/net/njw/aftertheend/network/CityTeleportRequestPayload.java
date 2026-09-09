@@ -1,5 +1,6 @@
 package net.njw.aftertheend.network;
 
+import java.util.UUID;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -15,7 +16,7 @@ import net.njw.aftertheend.AfterTheEnd;
  * 목적지 좌표, 안전한 Y 좌표는 서버가 결정한다.
  */
 public record CityTeleportRequestPayload(
-        String cityId
+        UUID cityId
 ) implements CustomPacketPayload {
 
     public static final Type<CityTeleportRequestPayload> TYPE =
@@ -44,9 +45,8 @@ public record CityTeleportRequestPayload(
     private void write(
             RegistryFriendlyByteBuf buffer
     ) {
-        buffer.writeUtf(
-                cityId
-        );
+        buffer.writeLong(cityId.getMostSignificantBits());
+        buffer.writeLong(cityId.getLeastSignificantBits());
     }
 
     /*
@@ -59,7 +59,7 @@ public record CityTeleportRequestPayload(
             RegistryFriendlyByteBuf buffer
     ) {
         return new CityTeleportRequestPayload(
-                buffer.readUtf()
+                new UUID(buffer.readLong(), buffer.readLong())
         );
     }
 

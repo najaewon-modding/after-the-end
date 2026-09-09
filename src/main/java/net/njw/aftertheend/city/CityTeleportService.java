@@ -61,7 +61,7 @@ public final class CityTeleportService {
         if (context.player() instanceof ServerPlayer player) startCast(player, payload.cityId());
     }
 
-    private static void startCast(ServerPlayer player, String cityId) {
+    private static void startCast(ServerPlayer player, UUID cityId) {
         UUID playerId = player.getUUID();
         if (ACTIVE_CASTS.containsKey(playerId)) {
             player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.already_casting"));
@@ -270,7 +270,7 @@ public final class CityTeleportService {
     private static final class DestinationSearchTask {
         private final ServerLevel level;
         private final CityRegion region;
-        private final String cityId;
+        private final UUID cityId;
         private final SafeDestination cached;
         private final Set<Long> loadedChunks = new HashSet<>();
         private SearchStage stage;
@@ -284,7 +284,7 @@ public final class CityTeleportService {
         private SafeDestination destination;
         private int candidatesChecked;
 
-        private DestinationSearchTask(ServerLevel level, CityRegion region, String cityId, SafeDestination cached) {
+        private DestinationSearchTask(ServerLevel level, CityRegion region, UUID cityId, SafeDestination cached) {
             this.level = level;
             this.region = region;
             this.cityId = cityId;
@@ -458,7 +458,7 @@ public final class CityTeleportService {
     private record SafeDestination(int blockX, int y, int blockZ) { }
 
     private static final class CastSession {
-        private final String cityId;
+        private final UUID cityId;
         private final ResourceKey<Level> dimension;
         private final Vec3 startPosition;
         private final long startedAtNanos;
@@ -467,7 +467,7 @@ public final class CityTeleportService {
         private final ServerBossEvent bossBar;
         private int ticks;
 
-        private CastSession(String cityId, ResourceKey<Level> dimension, Vec3 startPosition, long startedAtNanos, long completesAtNanos, DestinationSearchTask search, ServerBossEvent bossBar) {
+        private CastSession(UUID cityId, ResourceKey<Level> dimension, Vec3 startPosition, long startedAtNanos, long completesAtNanos, DestinationSearchTask search, ServerBossEvent bossBar) {
             this.cityId = cityId;
             this.dimension = dimension;
             this.startPosition = startPosition;

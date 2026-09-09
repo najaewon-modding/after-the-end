@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city.basecamp;
 
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
@@ -45,7 +46,7 @@ final class BasecampPlacementPlanner {
 
     private BasecampPlacementPlanner() { }
 
-    static List<Plan> plan(ServerLevel level, CityRegion region, List<Request> requests, long seed, String cityId) {
+    static List<Plan> plan(ServerLevel level, CityRegion region, List<Request> requests, long seed, UUID cityId) {
         if (requests.isEmpty()) return List.of();
 
         int count = requests.size();
@@ -741,7 +742,7 @@ final class BasecampPlacementPlanner {
     }
 
     private static void writeDebugReport(
-            String cityId,
+            UUID cityId,
             long seed,
             CityRegion region,
             double targetDistance,
@@ -752,7 +753,7 @@ final class BasecampPlacementPlanner {
         try {
             Path directory = Path.of("logs", "after-the-end", "basecamp-placement");
             Files.createDirectories(directory);
-            String safeCityId = cityId.replaceAll("[^A-Za-z0-9._-]", "_");
+            String safeCityId = cityId.toString().replaceAll("[^A-Za-z0-9._-]", "_");
             Path path = directory.resolve(safeCityId + "-" + Long.toUnsignedString(seed, 16) + ".csv");
             Set<Integer> selectedSampleIndices = new HashSet<>();
             for (int candidateIndex : selection.selected()) selectedSampleIndices.add(allCandidates.get(candidateIndex).chunk().sampleIndex());

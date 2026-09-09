@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city;
 
+import java.util.UUID;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.ResourceKey;
@@ -22,7 +23,7 @@ import java.util.Optional;
  * 으로 관리한다.
  */
 public record City(
-        String id,
+        UUID id,
         String name,
         Map<ResourceKey<Level>, CityRegion> regions
 ) {
@@ -33,6 +34,8 @@ public record City(
      * =========================================================
      */
 
+    private static final Codec<UUID> UUID_CODEC = Codec.STRING.xmap(UUID::fromString, UUID::toString);
+
     private static final Codec<Map<ResourceKey<Level>, CityRegion>>
             REGIONS_CODEC =
             Codec.unboundedMap(
@@ -42,7 +45,7 @@ public record City(
 
     public static final Codec<City> CODEC =
             RecordCodecBuilder.create(instance -> instance.group(
-                    Codec.STRING
+                    UUID_CODEC
                             .fieldOf("id")
                             .forGetter(
                                     City::id
@@ -86,12 +89,6 @@ public record City(
                 regions,
                 "regions"
         );
-
-        if (id.isBlank()) {
-            throw new IllegalArgumentException(
-                    "City id must not be blank."
-            );
-        }
 
         if (name.isBlank()) {
             throw new IllegalArgumentException(

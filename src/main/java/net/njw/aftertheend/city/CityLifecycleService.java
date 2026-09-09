@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city;
 
+import java.util.UUID;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.njw.aftertheend.city.basecamp.BasecampManager;
@@ -14,8 +15,8 @@ public final class CityLifecycleService {
 
     public static City createAccessibleCity(MinecraftServer server) {
         ensureCanCreateCity(server);
-        long sequence = CityManager.reserveNextCitySequence(server);
-        City city = CityPlacementService.placeAccessibleCity(server, "city_" + sequence, "City " + sequence);
+        UUID cityId = newCityId(server);
+        City city = CityPlacementService.placeAccessibleCity(server, cityId, cityId.toString());
         generateBasecampsOrRollback(server, city);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
@@ -24,15 +25,15 @@ public final class CityLifecycleService {
 
     public static City createLockedCity(MinecraftServer server) {
         ensureCanCreateCity(server);
-        long sequence = CityManager.reserveNextCitySequence(server);
-        City city = CityPlacementService.placeLockedCity(server, "city_" + sequence, "City " + sequence);
+        UUID cityId = newCityId(server);
+        City city = CityPlacementService.placeLockedCity(server, cityId, cityId.toString());
         generateBasecampsOrRollback(server, city);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
         return city;
     }
 
-    public static City unlockCity(MinecraftServer server, String cityId) {
+    public static City unlockCity(MinecraftServer server, UUID cityId) {
         City city = requireCity(server, cityId);
         BasecampPlacementService.ensureGenerated(server, city);
         if (CityManager.isCityAccessible(server, cityId)) return city;
@@ -42,7 +43,7 @@ public final class CityLifecycleService {
         return city;
     }
 
-    public static void deleteCity(MinecraftServer server, String cityId) {
+    public static void deleteCity(MinecraftServer server, UUID cityId) {
         if (CityRegistry.STARTING_CITY_ID.equals(cityId)) throw new IllegalArgumentException("Starting city cannot be deleted.");
         City city = requireCity(server, cityId);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -73,13 +74,21 @@ public final class CityLifecycleService {
         }
     }
 
+    private static UUID newCityId(MinecraftServer server) {
+        UUID cityId;
+        do {
+            cityId = UUID.randomUUID();
+        } while (CityManager.getCity(server, cityId) != null);
+        return cityId;
+    }
+
     private static void ensureCanCreateCity(MinecraftServer server) {
         int current = CityManager.getCities(server).size();
         int maximum = CityManager.getMaxCityCount(server);
         if (current >= maximum) throw new IllegalStateException("Maximum city count reached: " + current + "/" + maximum);
     }
 
-    private static City requireCity(MinecraftServer server, String cityId) {
+    private static City requireCity(MinecraftServer server, UUID cityId) {
         City city = CityManager.getCity(server, cityId);
         if (city == null) throw new IllegalArgumentException("Unknown city: " + cityId);
         return city;

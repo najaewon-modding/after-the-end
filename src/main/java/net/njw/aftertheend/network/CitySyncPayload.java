@@ -1,5 +1,6 @@
 package net.njw.aftertheend.network;
 
+import java.util.UUID;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -59,9 +60,8 @@ public record CitySyncPayload(
         );
 
         for (CityData city : cities) {
-            buffer.writeUtf(
-                    city.id()
-            );
+            buffer.writeLong(city.id().getMostSignificantBits());
+            buffer.writeLong(city.id().getLeastSignificantBits());
 
             buffer.writeUtf(
                     city.name()
@@ -123,8 +123,8 @@ public record CitySyncPayload(
                 cityIndex < cityCount;
                 cityIndex++
         ) {
-            String cityId =
-                    buffer.readUtf();
+            UUID cityId =
+                    new UUID(buffer.readLong(), buffer.readLong());
 
             String cityName =
                     buffer.readUtf();
@@ -198,7 +198,7 @@ public record CitySyncPayload(
      */
 
     public record CityData(
-            String id,
+            UUID id,
             String name,
             boolean unlocked,
             List<RegionData> regions
