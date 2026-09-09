@@ -105,6 +105,8 @@ public final class CitySyncService {
         List<CitySyncPayload.CityData> cities =
                 new ArrayList<>();
 
+        City nextLockedCity = CityManager.getNextLockedCity(server);
+
         for (
                 City city :
                 CityManager.getCities(
@@ -116,6 +118,10 @@ public final class CitySyncService {
                             server,
                             city.id()
                     );
+
+            if (!unlocked && (nextLockedCity == null || !city.id().equals(nextLockedCity.id()))) {
+                continue;
+            }
 
             cities.add(
                     CitySyncPayload.CityData.fromCity(
