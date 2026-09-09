@@ -26,6 +26,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Apply migration
         run: python tools/migrate_altar_city_reserve.py
+      - name: Regenerate renamed altar templates
+        run: |
+          python tools/generate_altar_structure.py
+          python tools/generate_small_altar_structure.py
       - name: Audit legacy terminology
         shell: bash
         run: |
