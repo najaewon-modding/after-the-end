@@ -13,6 +13,7 @@ import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityLifecycleService;
 import net.njw.aftertheend.city.CityManager;
 import net.njw.aftertheend.city.CityRegion;
+import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 
 public final class CityAdminCommand {
     private static final int BLOCKS_PER_CHUNK = 16;
@@ -34,6 +35,9 @@ public final class CityAdminCommand {
                         .then(Commands.literal("delete")
                                 .then(Commands.argument("cityId", StringArgumentType.word())
                                         .executes(context -> deleteCity(context.getSource(), StringArgumentType.getString(context, "cityId")))))
+                        .then(Commands.literal("load")
+                                .then(Commands.argument("cityId", StringArgumentType.word())
+                                        .executes(context -> loadCity(context.getSource(), StringArgumentType.getString(context, "cityId")))))
                         .then(Commands.literal("list").executes(context -> listCities(context.getSource())))
                         .then(Commands.literal("info")
                                 .then(Commands.argument("cityId", StringArgumentType.word())
@@ -72,6 +76,26 @@ public final class CityAdminCommand {
         try {
             CityLifecycleService.deleteCity(source.getServer(), cityId);
             source.sendSuccess(() -> Component.literal("Deleted city: " + cityId), false);
+            return 1;
+        } catch (RuntimeException exception) {
+            source.sendFailure(Component.literal(exception.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int loadCity(CommandSourceStack source, String cityId) {
+        City city = CityManager.getCity(source.getServer(), cityId);
+        if (city == null) {
+            source.sendFailure(Component.literal("Unknown city: " + cityId));
+            return 0;
+        }
+        try {
+            int taskCount = CityPregenerationHandler.startCityLoad(source.getServer(), city);
+            if (taskCount == 0) {
+                source.sendSuccess(() -> Component.literal("City chunks are already loaded: " + cityId), false);
+                return 1;
+            }
+            source.sendSuccess(() -> Component.literal("Started city chunk loading: " + cityId + ". All players will be disconnected until loading finishes."), true);
             return 1;
         } catch (RuntimeException exception) {
             source.sendFailure(Component.literal(exception.getMessage()));

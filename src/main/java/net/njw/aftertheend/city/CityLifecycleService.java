@@ -17,7 +17,6 @@ public final class CityLifecycleService {
         long sequence = CityManager.reserveNextCitySequence(server);
         City city = CityPlacementService.placeAccessibleCity(server, "city_" + sequence, "City " + sequence);
         generateBasecampsOrRollback(server, city);
-        CityPregenerationHandler.enqueueCity(server, city);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
         return city;
@@ -38,7 +37,6 @@ public final class CityLifecycleService {
         BasecampPlacementService.ensureGenerated(server, city);
         if (CityManager.isCityAccessible(server, cityId)) return city;
         CityManager.unlockCity(server, cityId);
-        CityPregenerationHandler.enqueueCity(server, city);
         PlayerPositionTracker.invalidateAllCityCaches();
         CitySyncService.syncToAll(server);
         return city;
