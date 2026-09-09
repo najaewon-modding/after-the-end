@@ -21,6 +21,14 @@ public final class AltarManager {
         return getSavedData(server).getPlacements(cityId);
     }
 
+    public static int getActivatedCount(MinecraftServer server, UUID cityId) {
+        return getSavedData(server).getActivatedCount(cityId);
+    }
+
+    public static boolean setActivated(MinecraftServer server, UUID cityId, int blockX, int y, int blockZ, boolean activated) {
+        return getSavedData(server).setActivated(cityId, blockX, y, blockZ, activated);
+    }
+
     public static void markGenerated(MinecraftServer server, UUID cityId, List<AltarPlacement> placements) {
         getSavedData(server).markGenerated(cityId, placements);
     }

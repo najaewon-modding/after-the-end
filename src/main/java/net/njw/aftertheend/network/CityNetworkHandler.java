@@ -5,47 +5,22 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.njw.aftertheend.city.CityTeleportService;
 
 public final class CityNetworkHandler {
+    private static final String NETWORK_VERSION = "2";
 
-    /*
-     * 네트워크 protocol version.
-     */
-    private static final String NETWORK_VERSION =
-            "1";
+    private CityNetworkHandler() { }
 
-    private CityNetworkHandler() {
-    }
-
-    public static void registerPayloads(
-            RegisterPayloadHandlersEvent event
-    ) {
-        PayloadRegistrar registrar =
-                event.registrar(
-                        NETWORK_VERSION
-                );
-
-        /*
-         * =====================================================
-         * Server -> Client
-         * =====================================================
-         *
-         * 도시 목록 동기화.
-         *
-         * client handler는
-         * CityClientNetworkHandler에서 등록한다.
-         */
+    public static void registerPayloads(RegisterPayloadHandlersEvent event) {
+        PayloadRegistrar registrar = event.registrar(NETWORK_VERSION);
 
         registrar.playToClient(
                 CitySyncPayload.TYPE,
                 CitySyncPayload.STREAM_CODEC
         );
 
-        /*
-         * =====================================================
-         * Client -> Server
-         * =====================================================
-         *
-         * 도시 이동 요청.
-         */
+        registrar.playToClient(
+                AltarActivationPayload.TYPE,
+                AltarActivationPayload.STREAM_CODEC
+        );
 
         registrar.playToServer(
                 CityTeleportRequestPayload.TYPE,

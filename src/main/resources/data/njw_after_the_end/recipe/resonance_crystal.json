@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": "njw_after_the_end:shulker_core",
+    "E": "minecraft:ender_eye",
+    "G": "minecraft:glass"
+  },
+  "pattern": [
+    "GGG",
+    "GEG",
+    "GCG"
+  ],
+  "result": {
+    "id": "njw_after_the_end:resonance_crystal"
+  }
+}

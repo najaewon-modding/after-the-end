@@ -56,6 +56,34 @@ public final class AltarSavedData extends SavedData {
         return placementsByCity.getOrDefault(cityId, List.of());
     }
 
+    public int getActivatedCount(UUID cityId) {
+        int count = 0;
+        for (AltarPlacement placement : getPlacements(cityId)) if (placement.activated()) count++;
+        return count;
+    }
+
+    public boolean setActivated(UUID cityId, int blockX, int y, int blockZ, boolean activated) {
+        for (int index = 0; index < placements.size(); index++) {
+            AltarPlacement placement = placements.get(index);
+            if (!sameSite(placement, cityId, blockX, y, blockZ)) continue;
+            if (placement.activated() == activated) return true;
+
+            AltarPlacement updated = placement.withActivated(activated);
+            placements.set(index, updated);
+            List<AltarPlacement> cityPlacements = new ArrayList<>(placementsByCity.getOrDefault(cityId, List.of()));
+            for (int cityIndex = 0; cityIndex < cityPlacements.size(); cityIndex++) {
+                if (sameSite(cityPlacements.get(cityIndex), cityId, blockX, y, blockZ)) {
+                    cityPlacements.set(cityIndex, updated);
+                    break;
+                }
+            }
+            placementsByCity.put(cityId, List.copyOf(cityPlacements));
+            setDirty();
+            return true;
+        }
+        return false;
+    }
+
     public void markGenerated(UUID cityId, List<AltarPlacement> cityPlacements) {
         placements.removeIf(placement -> placement.cityId().equals(cityId));
         placements.addAll(cityPlacements);
@@ -69,6 +97,13 @@ public final class AltarSavedData extends SavedData {
         changed |= placements.removeIf(placement -> placement.cityId().equals(cityId));
         placementsByCity.remove(cityId);
         if (changed) setDirty();
+    }
+
+    private static boolean sameSite(AltarPlacement placement, UUID cityId, int blockX, int y, int blockZ) {
+        return placement.cityId().equals(cityId)
+                && placement.blockX() == blockX
+                && placement.y() == y
+                && placement.blockZ() == blockZ;
     }
 
     private static Map<UUID, List<AltarPlacement>> buildPlacementIndex(List<AltarPlacement> placements) {

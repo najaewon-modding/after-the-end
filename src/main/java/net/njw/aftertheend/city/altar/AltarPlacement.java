@@ -12,9 +12,15 @@ public record AltarPlacement(
         int blockZ,
         boolean large,
         boolean ruined,
-        String color
+        String color,
+        boolean activated
 ) {
     private static final Codec<UUID> UUID_CODEC = Codec.STRING.xmap(UUID::fromString, UUID::toString);
+
+    public AltarPlacement(UUID cityId, String templateId, int blockX, int y, int blockZ,
+                          boolean large, boolean ruined, String color) {
+        this(cityId, templateId, blockX, y, blockZ, large, ruined, color, false);
+    }
 
     public static final Codec<AltarPlacement> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             UUID_CODEC.fieldOf("cityId").forGetter(AltarPlacement::cityId),
@@ -24,6 +30,11 @@ public record AltarPlacement(
             Codec.INT.fieldOf("blockZ").forGetter(AltarPlacement::blockZ),
             Codec.BOOL.fieldOf("large").forGetter(AltarPlacement::large),
             Codec.BOOL.fieldOf("ruined").forGetter(AltarPlacement::ruined),
-            Codec.STRING.fieldOf("color").forGetter(AltarPlacement::color)
+            Codec.STRING.fieldOf("color").forGetter(AltarPlacement::color),
+            Codec.BOOL.optionalFieldOf("activated", false).forGetter(AltarPlacement::activated)
     ).apply(instance, AltarPlacement::new));
+
+    public AltarPlacement withActivated(boolean activated) {
+        return new AltarPlacement(cityId, templateId, blockX, y, blockZ, large, ruined, color, activated);
+    }
 }

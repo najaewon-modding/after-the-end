@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "minecraft:item/slime_ball",
+    "tints": [
+      {
+        "type": "minecraft:constant",
+        "value": -34561
+      }
+    ]
+  }
+}

@@ -2,6 +2,9 @@
   "key.category.njw_after_the_end.city": "After the End",
   "key.njw_after_the_end.open_city_list": "Open City List",
 
+  "item.njw_after_the_end.shulker_core": "Shulker Core",
+  "block.njw_after_the_end.resonance_crystal": "Resonance Crystal",
+
   "gui.njw_after_the_end.city_list.title": "City List",
   "gui.njw_after_the_end.city_list.empty": "No cities",
   "gui.njw_after_the_end.city_list.status.unlocked": "Unlocked",
