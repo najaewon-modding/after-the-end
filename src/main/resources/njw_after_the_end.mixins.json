@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "package": "net.njw.aftertheend.mixin",
+  "client": [
+    "BossHealthOverlayMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -54,8 +54,9 @@ final class BasecampPlacementPlanner {
         SearchBounds largeBounds = searchBounds(region, LARGE);
 
         List<ChunkEvaluation> evaluated = new ArrayList<>(sampledChunks.size());
-        for (ChunkSeed chunk : sampledChunks) {
-            Site small = evaluateSiteInChunk(level, chunk, SMALL, smallBounds);
+        for (int index = 0; index < sampledChunks.size(); index++) {
+            ChunkSeed chunk = sampledChunks.get(index);
+            Site small = evaluateSiteInChunk(level, chunk, SMALL, smallBounds, index + 1, sampledChunks.size());
             evaluated.add(new ChunkEvaluation(chunk, small));
         }
 
@@ -74,7 +75,9 @@ final class BasecampPlacementPlanner {
         if (hasLarge) {
             for (int position = 0; position < selection.selected().length; position++) {
                 ChunkEvaluation candidate = evaluated.get(selection.selected()[position]);
-                Site large = evaluateSiteInChunk(level, candidate.chunk(), LARGE, largeBounds);
+                Site large = evaluateSiteInChunk(
+                        level, candidate.chunk(), LARGE, largeBounds, position + 1, selection.selected().length
+                );
                 if (bestLargeSite == null || large.score() < bestLargeSite.score()) {
                     bestLargeSite = large;
                     largePosition = position;
@@ -185,7 +188,9 @@ final class BasecampPlacementPlanner {
             ServerLevel level,
             ChunkSeed chunk,
             TemplateSize size,
-            SearchBounds bounds
+            SearchBounds bounds,
+            int progressIndex,
+            int progressTotal
     ) {
         int chunkMinX = chunk.chunkX() << 4;
         int chunkMinZ = chunk.chunkZ() << 4;
@@ -193,35 +198,71 @@ final class BasecampPlacementPlanner {
         int maxX = Math.min(chunkMinX + 15, bounds.maxCenterX());
         int minZ = Math.max(chunkMinZ, bounds.minCenterZ());
         int maxZ = Math.min(chunkMinZ + 15, bounds.maxCenterZ());
-        if (minX > maxX || minZ > maxZ) return emergencySiteInChunk(level, chunk, size, bounds);
+        if (minX > maxX || minZ > maxZ) {
+            Site fallback = emergencySiteInChunk(level, chunk, size, bounds);
+            logEvaluation(progressIndex, progressTotal, chunk, size, fallback, false, 0, 0, 0, 0, true, false, true);
+            return fallback;
+        }
 
         Map<Long, SurfaceSample> surfaceCache = new HashMap<>();
         Set<Long> missingSurfaceSamples = new HashSet<>();
+        Site best = null;
+        int totalCenters = 0;
+        int validCenters = 0;
+        boolean exceptionThrown = false;
         try {
             level.getChunk(chunk.chunkX(), chunk.chunkZ());
             int[] xs = sampledAxis(minX, maxX);
             int[] zs = sampledAxis(minZ, maxZ);
-            Site best = null;
+            totalCenters = xs.length * zs.length;
             for (int x : xs) {
                 for (int z : zs) {
                     TerrainAssessment terrain = assessTerrain(level, x, z, size, surfaceCache, missingSurfaceSamples);
                     if (terrain == null) continue;
+                    validCenters++;
                     double score = terrain.score() + edgePenalty(bounds, x, z);
                     if (best == null || score < best.score()) best = new Site(x, z, score, terrain);
                 }
             }
-            if (best != null) return best;
         } catch (RuntimeException exception) {
+            exceptionThrown = true;
             AfterTheEnd.LOGGER.warn(
                     "Basecamp terrain evaluation failed for sampled chunk ({}, {}), size={}; using fallback",
                     chunk.chunkX(), chunk.chunkZ(), size.width(), exception
             );
         }
-        AfterTheEnd.LOGGER.debug(
-                "Basecamp candidate chunk ({}, {}) size={} could not be terrain-scored normally; assigning fallback score instead of removing candidate",
-                chunk.chunkX(), chunk.chunkZ(), size.width()
+
+        boolean fallbackUsed = best == null;
+        Site result = fallbackUsed ? emergencySiteInChunk(level, chunk, size, bounds) : best;
+        logEvaluation(
+                progressIndex, progressTotal, chunk, size, result, !missingSurfaceSamples.isEmpty(),
+                missingSurfaceSamples.size(), surfaceCache.size(), validCenters, totalCenters,
+                fallbackUsed, exceptionThrown, false
         );
-        return emergencySiteInChunk(level, chunk, size, bounds);
+        return result;
+    }
+
+    private static void logEvaluation(
+            int progressIndex,
+            int progressTotal,
+            ChunkSeed chunk,
+            TemplateSize size,
+            Site site,
+            boolean surfaceSampleNull,
+            int nullSampleCount,
+            int cachedSurfaceCount,
+            int validCenters,
+            int totalCenters,
+            boolean fallback,
+            boolean exception,
+            boolean boundsInvalid
+    ) {
+        AfterTheEnd.LOGGER.info(
+                "Basecamp eval [{}/{}] chunk=({}, {}) size={} score={} surfaceSampleNull={} nullSampleCount={} cachedSurfaceCount={} validCenters={}/{} fallback={} exception={} boundsInvalid={}",
+                progressIndex, progressTotal, chunk.chunkX(), chunk.chunkZ(), size.width(), format(site.score()),
+                surfaceSampleNull, nullSampleCount, cachedSurfaceCount, validCenters, totalCenters,
+                fallback, exception, boundsInvalid
+        );
     }
 
     private static Site emergencySiteInChunk(ServerLevel level, ChunkSeed chunk, TemplateSize size, SearchBounds bounds) {
