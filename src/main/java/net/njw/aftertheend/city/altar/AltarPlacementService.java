@@ -14,7 +14,6 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
@@ -101,8 +100,14 @@ public final class AltarPlacementService {
         while (true) {
             AltarPlacementPlanner.PreparationStep step = advancePreparation(preparation);
             if (step.complete()) return completePreparation(server, city, preparation, step.plans());
-            for (ChunkPos chunk : step.requiredChunks()) {
-                preparation.level().getChunk(chunk.x(), chunk.z(), ChunkStatus.FULL, true);
+            for (ChunkPos chunk : missingRequiredChunks(preparation, step.candidateIndex())) {
+                long started = System.nanoTime();
+                preparation.level().getChunk(chunk.x(), chunk.z(), step.chunkStatus(), true);
+                AfterTheEnd.LOGGER.info(
+                        "chunk ({}, {}) {} {}sec city={}", chunk.x(), chunk.z(),
+                        AltarPlacementPlanner.statusName(step.chunkStatus()),
+                        AltarPlacementPlanner.formatSeconds((System.nanoTime() - started) / 1_000_000_000.0), city.id()
+                );
             }
             exactEvaluateLoaded(preparation, step.candidateIndex());
         }
