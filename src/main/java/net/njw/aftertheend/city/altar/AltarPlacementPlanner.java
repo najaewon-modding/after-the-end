@@ -1,9 +1,5 @@
 package net.njw.aftertheend.city.altar;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -86,6 +82,11 @@ final class AltarPlacementPlanner {
                     ? evaluateVirtualSite(level, generator, randomState, virtualSurfaceCache, chunk, LARGE, largeBounds)
                     : null;
             candidates.add(new Candidate(chunk, virtualSmall, virtualLarge));
+            AfterTheEnd.LOGGER.info(
+                    "Altar planner {}: virtual candidate [{}/{}] chunk=({}, {}) small={}{}",
+                    cityId, chunk.sampleIndex() + 1, sampledChunks.size(), chunk.chunkX(), chunk.chunkZ(),
+                    format(virtualSmall.score()), hasLarge ? " large=" + format(virtualLarge.score()) : ""
+            );
         }
         double targetDistance = preferredDistance(region, count);
         AfterTheEnd.LOGGER.info(
@@ -129,10 +130,6 @@ final class AltarPlacementPlanner {
 
             List<Plan> plans = buildPlans(session.requests, selection, session.candidates);
             session.completedPlans = List.copyOf(plans);
-            writeDebugReport(
-                    session.cityId, session.seed, session.region, session.targetDistance,
-                    session.candidates, selection, session.completedPlans
-            );
             AfterTheEnd.LOGGER.info(
                     "Altar planner {}: FPS candidates={}, exact candidates generated={}, structures={}, targetDistance={} blocks, objective={}",
                     session.cityId, session.candidates.size(), session.exactEvaluations, session.count,
@@ -921,62 +918,6 @@ final class AltarPlacementPlanner {
         value ^= value >>> 33;
         value *= 0xc4ceb9fe1a85ec53L;
         return value ^ value >>> 33;
-    }
-
-    private static void writeDebugReport(
-            UUID cityId,
-            long seed,
-            CityRegion region,
-            double targetDistance,
-            List<Candidate> candidates,
-            SelectionResult selection,
-            List<Plan> plans
-    ) {
-        try {
-            Path directory = Path.of("logs", "after-the-end", "altar-placement");
-            Files.createDirectories(directory);
-            String safeCityId = cityId.toString().replaceAll("[^A-Za-z0-9._-]", "_");
-            Path path = directory.resolve(safeCityId + "-" + Long.toUnsignedString(seed, 16) + ".csv");
-            Set<Integer> selected = new HashSet<>();
-            for (int index : selection.selected()) selected.add(index);
-            StringBuilder out = new StringBuilder(48 * 1024);
-            out.append("# cityId,").append(cityId).append('\n');
-            out.append("# seed,").append(Long.toUnsignedString(seed)).append('\n');
-            out.append("# regionChunks,").append(region.minChunkX()).append(',').append(region.minChunkZ()).append(',')
-                    .append(region.maxChunkX()).append(',').append(region.maxChunkZ()).append('\n');
-            out.append("# fpsCandidateCount,").append(candidates.size()).append('\n');
-            out.append("# targetDistanceBlocks,").append(format(targetDistance)).append('\n');
-            out.append("# optimizerObjective,").append(format(selection.objective())).append('\n');
-            out.append("sampleIndex,chunkX,chunkZ,virtualSmall,actualSmall,smallReject,virtualLarge,actualLarge,largeReject,exactEvaluated,selected,largeSelected\n");
-            for (int i = 0; i < candidates.size(); i++) {
-                Candidate candidate = candidates.get(i);
-                out.append(candidate.chunk.sampleIndex()).append(',').append(candidate.chunk.chunkX()).append(',').append(candidate.chunk.chunkZ()).append(',')
-                        .append(siteScore(candidate.virtualSmall)).append(',').append(siteScore(candidate.exactSmall)).append(',').append(csv(candidate.smallReject)).append(',')
-                        .append(siteScore(candidate.virtualLarge)).append(',').append(siteScore(candidate.exactLarge)).append(',').append(csv(candidate.largeReject)).append(',')
-                        .append(candidate.exactEvaluated).append(',').append(selected.contains(i)).append(',').append(selection.largeCandidateIndex() == i).append('\n');
-            }
-            out.append("# finalPlans\n");
-            out.append("specIndex,sampleIndex,chunkX,chunkZ,size,centerX,centerZ,targetY,terrainScore,buriedFraction,floatingFraction,waterFraction\n");
-            for (Plan plan : plans) {
-                out.append(plan.specIndex()).append(',').append(plan.sampleIndex()).append(',').append(plan.chunkX()).append(',').append(plan.chunkZ()).append(',')
-                        .append(plan.large() ? "large" : "small").append(',').append(plan.centerX()).append(',').append(plan.centerZ()).append(',')
-                        .append(plan.targetSurfaceY()).append(',').append(format(plan.terrainScore())).append(',').append(format(plan.buriedFraction())).append(',')
-                        .append(format(plan.floatingFraction())).append(',').append(format(plan.submergedFraction())).append('\n');
-            }
-            Files.writeString(path, out.toString(), StandardCharsets.UTF_8);
-            AfterTheEnd.LOGGER.info("Altar placement debug report for {}: {}", cityId, path.toAbsolutePath());
-        } catch (IOException exception) {
-            AfterTheEnd.LOGGER.warn("Failed to write Altar placement debug report for {}", cityId, exception);
-        }
-    }
-
-    private static String siteScore(Site site) {
-        return site == null ? "" : format(site.score());
-    }
-
-    private static String csv(String value) {
-        if (value == null || value.isEmpty()) return "";
-        return '"' + value.replace("\"", "\"\"") + '"';
     }
 
     private static double elapsedSeconds(long startedNanos) {
