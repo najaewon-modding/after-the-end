@@ -38,10 +38,10 @@ public final class CityLifecycleService {
         int created = 0;
         while (CityManager.getLockedCityCount(server) < LOCKED_CITY_RESERVE_COUNT) {
             int slot = CityManager.getLockedCityCount(server) + 1;
-            AfterTheEnd.LOGGER.info("Preparing locked city reserve [{}/{}].", slot, LOCKED_CITY_RESERVE_COUNT);
+            AfterTheEnd.LOGGER.info("Preparing locked city reserve metadata [{}/{}].", slot, LOCKED_CITY_RESERVE_COUNT);
             City city = createLockedCityInternal(server);
             created++;
-            AfterTheEnd.LOGGER.info("Prepared locked city reserve [{}/{}]: {}", slot, LOCKED_CITY_RESERVE_COUNT, city.id());
+            AfterTheEnd.LOGGER.info("Prepared locked city reserve metadata [{}/{}]: {}", slot, LOCKED_CITY_RESERVE_COUNT, city.id());
         }
         if (created > 0) finishCityStateChange(server);
         return created;
@@ -53,8 +53,8 @@ public final class CityLifecycleService {
         if (CityManager.isCityAccessible(server, cityId)) return city;
         ensureCanAddUnlockedCity(server);
 
-        // Prepare the replacement first.  The reserve is briefly four cities, then
-        // returns to exactly three when the requested city becomes accessible.
+        // Locked reserve cities are metadata-only. Generate Altars only for the city being unlocked,
+        // then replenish the reserve without forcing any replacement-city chunks to generate.
         createLockedCityInternal(server);
         CityManager.unlockCity(server, cityId);
         finishCityStateChange(server);
@@ -86,9 +86,7 @@ public final class CityLifecycleService {
 
     private static City createLockedCityInternal(MinecraftServer server) {
         UUID cityId = newCityId(server);
-        City city = CityPlacementService.placeLockedCity(server, cityId, cityId.toString());
-        generateAltarsOrRollback(server, city);
-        return city;
+        return CityPlacementService.placeLockedCity(server, cityId, cityId.toString());
     }
 
     private static void generateAltarsOrRollback(MinecraftServer server, City city) {

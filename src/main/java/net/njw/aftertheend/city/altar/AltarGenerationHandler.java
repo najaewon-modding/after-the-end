@@ -16,14 +16,14 @@ public final class AltarGenerationHandler {
         MinecraftServer server = event.getServer();
         int createdCities = CityLifecycleService.ensureLockedCityReserve(server);
         int generatedAltars = 0;
-        for (City city : CityManager.getCities(server)) {
+        for (City city : CityManager.getAccessibleCities(server)) {
             if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedAltars++;
         }
         if (createdCities > 0) {
-            AfterTheEnd.LOGGER.info("Prepared {} locked city/cities during server startup.", createdCities);
+            AfterTheEnd.LOGGER.info("Prepared {} locked city metadata reserve entries during server startup.", createdCities);
         }
         if (generatedAltars > 0) {
-            AfterTheEnd.LOGGER.info("Generated missing Altars for {} city/cities during server startup.", generatedAltars);
+            AfterTheEnd.LOGGER.info("Generated missing Altars for {} accessible city/cities during server startup.", generatedAltars);
         }
     }
 }
