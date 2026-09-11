@@ -15,17 +15,25 @@ public final class AltarGenerationHandler {
     public static void onServerStarted(ServerStartedEvent event) {
         MinecraftServer server = event.getServer();
         int createdCities = CityLifecycleService.ensureLockedCityReserve(server);
-        int generatedAltars = 0;
+        int generatedAccessibleAltars = 0;
+        int generatedLockedAltars = 0;
+
         for (City city : CityManager.getAccessibleCities(server)) {
-            if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedAltars++;
+            if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedAccessibleAltars++;
         }
+        for (City city : CityManager.getLockedCities(server)) {
+            if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedLockedAltars++;
+        }
+
         HiddenCityPreparationService.refreshQueue(server);
         if (createdCities > 0) {
-            AfterTheEnd.LOGGER.info("Prepared {} locked city metadata reserve entries during server startup.", createdCities);
+            AfterTheEnd.LOGGER.info("Prepared {} locked city reserve entries during server startup.", createdCities);
         }
-        if (generatedAltars > 0) {
-            AfterTheEnd.LOGGER.info("Generated missing Altars for {} accessible city/cities during server startup.", generatedAltars);
+        if (generatedAccessibleAltars > 0) {
+            AfterTheEnd.LOGGER.info("Generated missing Altars for {} accessible city/cities during server startup.", generatedAccessibleAltars);
         }
-        AfterTheEnd.LOGGER.info("Hidden city reserve preparation queued; locked cities become READY without blocking unlock rituals.");
+        if (generatedLockedAltars > 0) {
+            AfterTheEnd.LOGGER.info("Generated missing Altars for {} locked reserve city/cities during server startup; initial reserve is READY.", generatedLockedAltars);
+        }
     }
 }
