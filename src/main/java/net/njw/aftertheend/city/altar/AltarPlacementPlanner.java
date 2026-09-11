@@ -16,6 +16,7 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -28,6 +29,8 @@ import net.njw.aftertheend.city.CityRegion;
 
 final class AltarPlacementPlanner {
     private static final int FPS_CANDIDATE_COUNT = 64;
+    private static final int SMALL_REFINE_MIN_CANDIDATES = 24;
+    private static final int SMALL_REFINE_MULTIPLIER = 4;
     private static final int CENTER_AXIS_SAMPLES = 4;
     private static final int OPTIMIZER_RESTARTS = 16;
     private static final int OPTIMIZER_MAX_PASSES = 12;
@@ -59,7 +62,14 @@ final class AltarPlacementPlanner {
         while (true) {
             PreparationStep step = advancePreparation(session);
             if (step.complete()) return step.plans();
-            for (ChunkPos chunk : step.requiredChunks()) level.getChunk(chunk.x(), chunk.z(), ChunkStatus.FULL, true);
+            for (ChunkPos chunk : missingRequiredChunks(session, step.candidateIndex())) {
+                long started = System.nanoTime();
+                level.getChunk(chunk.x(), chunk.z(), step.chunkStatus(), true);
+                AfterTheEnd.LOGGER.info(
+                        "chunk ({}, {}) {} {}sec city={}", chunk.x(), chunk.z(), statusName(step.chunkStatus()),
+                        formatSeconds(elapsedSeconds(started)), cityId
+                );
+            }
             exactEvaluateLoaded(session, step.candidateIndex());
         }
     }
@@ -75,21 +85,64 @@ final class AltarPlacementPlanner {
         RandomState randomState = level.getChunkSource().randomState();
         Map<Long, SurfaceSample> virtualSurfaceCache = new ConcurrentHashMap<>();
         List<Candidate> candidates = new ArrayList<>(sampledChunks.size());
-        long started = System.nanoTime();
+        long coarseStarted = System.nanoTime();
         for (ChunkSeed chunk : sampledChunks) {
             long candidateStarted = System.nanoTime();
-            Site virtualSmall = evaluateVirtualSite(level, generator, randomState, virtualSurfaceCache, chunk, SMALL, smallBounds);
-            candidates.add(new Candidate(chunk, virtualSmall));
+            Site coarseSmall = evaluateVirtualSiteCoarse(level, generator, randomState, virtualSurfaceCache, chunk, SMALL, smallBounds);
+            candidates.add(new Candidate(chunk, coarseSmall));
             AfterTheEnd.LOGGER.info(
-                    "[{}/{}] {}sec chunk=({}, {}) small={} city={}",
+                    "[{}/{}] {}sec chunk=({}, {}) small-coarse={} city={}",
                     chunk.sampleIndex() + 1, sampledChunks.size(), formatSeconds(elapsedSeconds(candidateStarted)),
-                    chunk.chunkX(), chunk.chunkZ(), format(virtualSmall.score()), cityId
+                    chunk.chunkX(), chunk.chunkZ(), format(coarseSmall.score()), cityId
             );
         }
         double targetDistance = preferredDistance(region, count);
         AfterTheEnd.LOGGER.info(
-                "Altar planner {}: virtual-evaluated {} Small FPS candidates in {}sec without loading candidate chunks.",
-                cityId, candidates.size(), formatSeconds(elapsedSeconds(started))
+                "Altar planner {}: coarse-evaluated {} Small FPS candidates in {}sec without loading candidate chunks.",
+                cityId, candidates.size(), formatSeconds(elapsedSeconds(coarseStarted))
+        );
+
+        RandomSource coarseRandom = RandomSource.create(mix(seed ^ OPTIMIZER_SEED_SALT ^ 0x510e527fade682d1L));
+        SelectionResult coarseSelection = optimizeSmallSelection(candidates, count, hasLarge, targetDistance, coarseRandom);
+        int refineTarget = Math.min(candidates.size(), Math.max(SMALL_REFINE_MIN_CANDIDATES, count * SMALL_REFINE_MULTIPLIER));
+        boolean[] refine = new boolean[candidates.size()];
+        int refineCount = 0;
+        for (int index : coarseSelection.selected()) {
+            if (!refine[index]) {
+                refine[index] = true;
+                refineCount++;
+            }
+        }
+        List<Integer> coarseRank = new ArrayList<>(candidates.size());
+        for (int index = 0; index < candidates.size(); index++) coarseRank.add(index);
+        coarseRank.sort(Comparator.comparingDouble(index -> candidates.get(index).coarseSmall.score()));
+        for (int index : coarseRank) {
+            if (refineCount >= refineTarget) break;
+            if (!refine[index]) {
+                refine[index] = true;
+                refineCount++;
+            }
+        }
+        long refineStarted = System.nanoTime();
+        int refined = 0;
+        for (int index = 0; index < candidates.size(); index++) {
+            if (!refine[index]) continue;
+            Candidate candidate = candidates.get(index);
+            long candidateStarted = System.nanoTime();
+            candidate.virtualSmall = evaluateVirtualSite(
+                    level, generator, randomState, virtualSurfaceCache, candidate.chunk, SMALL, smallBounds
+            );
+            candidate.smallRefined = true;
+            refined++;
+            AfterTheEnd.LOGGER.info(
+                    "[{}/{}] {}sec chunk=({}, {}) small-refine={} city={}",
+                    refined, refineTarget, formatSeconds(elapsedSeconds(candidateStarted)), candidate.chunk.chunkX(),
+                    candidate.chunk.chunkZ(), format(candidate.virtualSmall.score()), cityId
+            );
+        }
+        AfterTheEnd.LOGGER.info(
+                "Altar planner {}: refined {} of {} Small candidates in {}sec; remaining candidates refine on demand.",
+                cityId, refined, candidates.size(), formatSeconds(elapsedSeconds(refineStarted))
         );
         return new PreparationSession(
                 level, List.copyOf(requests), seed, cityId, count, hasLarge, smallBounds, largeBounds,
@@ -109,6 +162,18 @@ final class AltarPlacementPlanner {
                 );
             }
             SelectionResult selection = session.selection;
+
+            boolean refinedSelected = false;
+            for (int candidateIndex : selection.selected()) {
+                Candidate candidate = session.candidates.get(candidateIndex);
+                if (candidate.smallRefined || candidate.smallExactEvaluated) continue;
+                refineSmallCandidate(session, candidate);
+                refinedSelected = true;
+            }
+            if (refinedSelected) {
+                session.selection = null;
+                continue;
+            }
 
             int rejectedSmall = firstRejectedSmall(selection, session.candidates);
             if (rejectedSmall >= 0) {
@@ -198,15 +263,50 @@ final class AltarPlacementPlanner {
         }
     }
 
+    private static void refineSmallCandidate(PreparationSession session, Candidate candidate) {
+        long started = System.nanoTime();
+        candidate.virtualSmall = evaluateVirtualSite(
+                session.level, session.generator, session.randomState, session.virtualSurfaceCache,
+                candidate.chunk, SMALL, session.smallBounds
+        );
+        candidate.smallRefined = true;
+        AfterTheEnd.LOGGER.info(
+                "small-refine-selected {}sec chunk=({}, {}) small={} city={}",
+                formatSeconds(elapsedSeconds(started)), candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
+                format(candidate.virtualSmall.score()), session.cityId
+        );
+    }
+
     private static PreparationStep requestExact(PreparationSession session, int candidateIndex, ExactRole role) {
         Candidate candidate = session.candidates.get(candidateIndex);
-        session.pendingExactCandidateIndex = candidateIndex;
-        session.pendingExactRole = role;
-        session.pendingExactMode = switch (role) {
+        ExactMode mode = switch (role) {
             case SMALL -> candidate.smallFallbackRequired ? ExactMode.FULL_SEARCH : ExactMode.FAST_CENTER;
             case LARGE -> candidate.largeFallbackRequired ? ExactMode.FULL_SEARCH : ExactMode.FAST_CENTER;
         };
-        return PreparationStep.candidate(candidateIndex, requiredChunks(session, candidateIndex));
+        session.pendingExactCandidateIndex = candidateIndex;
+        session.pendingExactRole = role;
+        session.pendingExactMode = mode;
+        session.pendingChunkStatus = structurePrechecked(candidate, role, mode)
+                ? ChunkStatus.FULL
+                : ChunkStatus.STRUCTURE_REFERENCES;
+        return PreparationStep.candidate(candidateIndex, session.pendingChunkStatus, requiredChunks(session, candidateIndex));
+    }
+
+    private static boolean structurePrechecked(Candidate candidate, ExactRole role, ExactMode mode) {
+        return switch (role) {
+            case SMALL -> mode == ExactMode.FAST_CENTER ? candidate.smallFastStructurePrechecked : candidate.smallFullStructurePrechecked;
+            case LARGE -> mode == ExactMode.FAST_CENTER ? candidate.largeFastStructurePrechecked : candidate.largeFullStructurePrechecked;
+        };
+    }
+
+    private static void markStructurePrechecked(Candidate candidate, ExactRole role, ExactMode mode) {
+        if (role == ExactRole.SMALL) {
+            if (mode == ExactMode.FAST_CENTER) candidate.smallFastStructurePrechecked = true;
+            else candidate.smallFullStructurePrechecked = true;
+        } else {
+            if (mode == ExactMode.FAST_CENTER) candidate.largeFastStructurePrechecked = true;
+            else candidate.largeFullStructurePrechecked = true;
+        }
     }
 
     private static int firstRejectedSmall(SelectionResult selection, List<Candidate> candidates) {
@@ -218,7 +318,8 @@ final class AltarPlacementPlanner {
     }
 
     static List<ChunkPos> requiredChunks(PreparationSession session, int candidateIndex) {
-        if (session.pendingExactCandidateIndex != candidateIndex || session.pendingExactRole == null || session.pendingExactMode == null) {
+        if (session.pendingExactCandidateIndex != candidateIndex || session.pendingExactRole == null
+                || session.pendingExactMode == null || session.pendingChunkStatus == null) {
             throw new IllegalStateException("No exact Altar evaluation is pending for candidate " + candidateIndex);
         }
         Candidate candidate = session.candidates.get(candidateIndex);
@@ -226,7 +327,7 @@ final class AltarPlacementPlanner {
         Site virtualSite = session.pendingExactRole == ExactRole.SMALL ? candidate.virtualSmall : candidate.virtualLarge;
         TemplateSize size = session.pendingExactRole == ExactRole.SMALL ? SMALL : LARGE;
         if (virtualSite == null) throw new IllegalStateException("Fast exact Altar evaluation requires a virtual site.");
-        return footprintChunks(virtualSite, size);
+        return footprintChunks(virtualSite.centerX(), virtualSite.centerZ(), size);
     }
 
     private static List<ChunkPos> fullSearchChunks(Candidate candidate) {
@@ -242,19 +343,19 @@ final class AltarPlacementPlanner {
         return List.copyOf(chunks);
     }
 
-    private static List<ChunkPos> footprintChunks(Site site, TemplateSize size) {
+    private static List<ChunkPos> footprintChunks(int centerX, int centerZ, TemplateSize size) {
         int half = size.width() / 2;
-        int minX = site.centerX() - half;
+        int minX = centerX - half;
         int maxX = minX + size.width() - 1;
-        int minZ = site.centerZ() - half;
+        int minZ = centerZ - half;
         int maxZ = minZ + size.width() - 1;
         int minChunkX = minX >> 4;
         int maxChunkX = maxX >> 4;
         int minChunkZ = minZ >> 4;
         int maxChunkZ = maxZ >> 4;
         List<ChunkPos> chunks = new ArrayList<>((maxChunkX - minChunkX + 1) * (maxChunkZ - minChunkZ + 1));
-        int centerChunkX = site.centerX() >> 4;
-        int centerChunkZ = site.centerZ() >> 4;
+        int centerChunkX = centerX >> 4;
+        int centerChunkZ = centerZ >> 4;
         for (int radius = 0; radius <= 2; radius++) {
             for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
                 for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
@@ -267,17 +368,25 @@ final class AltarPlacementPlanner {
     }
 
     static List<ChunkPos> missingRequiredChunks(PreparationSession session, int candidateIndex) {
+        if (session.pendingChunkStatus == null) throw new IllegalStateException("No chunk status is pending.");
         List<ChunkPos> missing = new ArrayList<>();
         for (ChunkPos chunk : requiredChunks(session, candidateIndex)) {
-            if (session.level.getChunkSource().getChunkNow(chunk.x(), chunk.z()) == null) missing.add(chunk);
+            if (session.pendingChunkStatus == ChunkStatus.FULL) {
+                if (session.level.getChunkSource().getChunkNow(chunk.x(), chunk.z()) == null) missing.add(chunk);
+            } else if (session.level.getChunkSource().getChunk(
+                    chunk.x(), chunk.z(), session.pendingChunkStatus, false
+            ) == null) {
+                missing.add(chunk);
+            }
         }
         return List.copyOf(missing);
     }
 
     static void exactEvaluateLoaded(PreparationSession session, int candidateIndex) {
         List<ChunkPos> missing = missingRequiredChunks(session, candidateIndex);
-        if (!missing.isEmpty()) throw new IllegalStateException("Exact Altar evaluation requires loaded chunks: " + missing);
-        if (session.pendingExactRole == null || session.pendingExactMode == null || session.pendingExactCandidateIndex != candidateIndex) {
+        if (!missing.isEmpty()) throw new IllegalStateException("Exact Altar evaluation requires prepared chunks: " + missing);
+        if (session.pendingExactRole == null || session.pendingExactMode == null || session.pendingChunkStatus == null
+                || session.pendingExactCandidateIndex != candidateIndex) {
             throw new IllegalStateException("Unexpected exact Altar evaluation request for candidate " + candidateIndex);
         }
         Candidate candidate = session.candidates.get(candidateIndex);
@@ -286,6 +395,47 @@ final class AltarPlacementPlanner {
         TemplateSize size = role == ExactRole.SMALL ? SMALL : LARGE;
         SearchBounds bounds = role == ExactRole.SMALL ? session.smallBounds : session.largeBounds;
         Site virtualSite = role == ExactRole.SMALL ? candidate.virtualSmall : candidate.virtualLarge;
+
+        if (session.pendingChunkStatus == ChunkStatus.STRUCTURE_REFERENCES) {
+            long started = System.nanoTime();
+            boolean clear = structurePrecheckPasses(session.level, candidate, virtualSite, size, bounds, mode);
+            if (clear) {
+                markStructurePrechecked(candidate, role, mode);
+                AfterTheEnd.LOGGER.info(
+                        "Altar structure precheck sample={} chunk=({}, {}) {}sec {} {}=pass city={}",
+                        candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
+                        formatSeconds(elapsedSeconds(started)), mode == ExactMode.FAST_CENTER ? "fast" : "fallback",
+                        role == ExactRole.SMALL ? "small" : "large", session.cityId
+                );
+            } else if (mode == ExactMode.FAST_CENTER) {
+                if (role == ExactRole.SMALL) candidate.smallFallbackRequired = true;
+                else candidate.largeFallbackRequired = true;
+                AfterTheEnd.LOGGER.info(
+                        "Altar structure precheck sample={} chunk=({}, {}) {}sec {}=fallback reason=structure overlap city={}",
+                        candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
+                        formatSeconds(elapsedSeconds(started)), role == ExactRole.SMALL ? "small" : "large", session.cityId
+                );
+            } else {
+                if (role == ExactRole.SMALL) {
+                    candidate.smallExactEvaluated = true;
+                    candidate.smallReject = "structure overlap";
+                    candidate.exactSmall = null;
+                } else {
+                    candidate.largeExactEvaluated = true;
+                    candidate.largeReject = "structure overlap";
+                    candidate.exactLarge = null;
+                }
+                session.exactEvaluations++;
+                AfterTheEnd.LOGGER.info(
+                        "Altar structure precheck sample={} chunk=({}, {}) {}sec {}=reject reason=structure overlap city={}",
+                        candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
+                        formatSeconds(elapsedSeconds(started)), role == ExactRole.SMALL ? "small" : "large", session.cityId
+                );
+            }
+            clearPendingExact(session);
+            return;
+        }
+
         long started = System.nanoTime();
         ActualSiteResult result = mode == ExactMode.FAST_CENTER
                 ? evaluateActualSiteAtCenter(session.level, virtualSite, size, bounds)
@@ -322,9 +472,61 @@ final class AltarPlacementPlanner {
                     reject.isEmpty() ? "" : " reject=" + reject, session.cityId
             );
         }
+        clearPendingExact(session);
+    }
+
+    private static void clearPendingExact(PreparationSession session) {
         session.pendingExactRole = null;
         session.pendingExactMode = null;
+        session.pendingChunkStatus = null;
         session.pendingExactCandidateIndex = -1;
+    }
+
+    private static boolean structurePrecheckPasses(
+            ServerLevel level,
+            Candidate candidate,
+            Site virtualSite,
+            TemplateSize size,
+            SearchBounds bounds,
+            ExactMode mode
+    ) {
+        if (mode == ExactMode.FAST_CENTER) {
+            return virtualSite != null && structureFreeAtCenter(level, virtualSite.centerX(), virtualSite.centerZ(), size);
+        }
+        int chunkMinX = candidate.chunk.chunkX() << 4;
+        int chunkMinZ = candidate.chunk.chunkZ() << 4;
+        int minX = Math.max(chunkMinX, bounds.minCenterX());
+        int maxX = Math.min(chunkMinX + 15, bounds.maxCenterX());
+        int minZ = Math.max(chunkMinZ, bounds.minCenterZ());
+        int maxZ = Math.min(chunkMinZ + 15, bounds.maxCenterZ());
+        if (minX > maxX || minZ > maxZ) return false;
+        for (int centerX : sampledAxis(minX, maxX)) {
+            for (int centerZ : sampledAxis(minZ, maxZ)) {
+                if (structureFreeAtCenter(level, centerX, centerZ, size)) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean structureFreeAtCenter(ServerLevel level, int centerX, int centerZ, TemplateSize size) {
+        int half = size.width() / 2;
+        int minX = centerX - half;
+        int maxX = minX + size.width() - 1;
+        int minZ = centerZ - half;
+        int maxZ = minZ + size.width() - 1;
+        for (ChunkPos pos : footprintChunks(centerX, centerZ, size)) {
+            ChunkAccess chunk = level.getChunkSource().getChunk(
+                    pos.x(), pos.z(), ChunkStatus.STRUCTURE_REFERENCES, false
+            );
+            if (chunk == null) return false;
+            if (!chunk.getAllReferences().isEmpty()) return false;
+            for (StructureStart start : chunk.getAllStarts().values()) {
+                if (start == null || !start.isValid()) continue;
+                BoundingBox box = start.getBoundingBox();
+                if (box.maxX() >= minX && box.minX() <= maxX && box.maxZ() >= minZ && box.minZ() <= maxZ) return false;
+            }
+        }
+        return true;
     }
 
     private static List<Plan> buildPlans(List<Request> requests, SelectionResult selection, List<Candidate> candidates) {
@@ -408,6 +610,50 @@ final class AltarPlacementPlanner {
         return worst.score() > threshold ? worst.index() : -1;
     }
 
+    private static Site evaluateVirtualSiteCoarse(
+            ServerLevel level,
+            ChunkGenerator generator,
+            RandomState randomState,
+            Map<Long, SurfaceSample> cache,
+            ChunkSeed chunk,
+            TemplateSize size,
+            SearchBounds bounds
+    ) {
+        int chunkMinX = chunk.chunkX() << 4;
+        int chunkMinZ = chunk.chunkZ() << 4;
+        int minX = Math.max(chunkMinX, bounds.minCenterX());
+        int maxX = Math.min(chunkMinX + 15, bounds.maxCenterX());
+        int minZ = Math.max(chunkMinZ, bounds.minCenterZ());
+        int maxZ = Math.min(chunkMinZ + 15, bounds.maxCenterZ());
+        if (minX > maxX || minZ > maxZ) {
+            return virtualPenaltySite(level, chunk, bounds);
+        }
+        int[] xs = sampledAxis(minX, maxX);
+        int[] zs = sampledAxis(minZ, maxZ);
+        int centerX = xs[xs.length / 2];
+        int centerZ = zs[zs.length / 2];
+        int half = size.width() / 2;
+        int originX = centerX - half;
+        int originZ = centerZ - half;
+        int[] supportYs = new int[FOOTPRINT_SAMPLE_COUNT];
+        int[] fluidTopYs = new int[FOOTPRINT_SAMPLE_COUNT];
+        int sampleIndex = 0;
+        for (int dxIndex = 0; dxIndex < 3; dxIndex++) {
+            int x = originX + footprintSampleOffset(size.width(), dxIndex);
+            for (int dzIndex = 0; dzIndex < 3; dzIndex++) {
+                int z = originZ + footprintSampleOffset(size.width(), dzIndex);
+                SurfaceSample sample = cache.computeIfAbsent(
+                        packXZ(x, z), ignored -> readVirtualSurfaceSample(level, generator, randomState, x, z)
+                );
+                if (sample == null) return virtualPenaltySite(level, chunk, bounds);
+                supportYs[sampleIndex] = sample.supportY();
+                fluidTopYs[sampleIndex++] = sample.fluidTopY();
+            }
+        }
+        TerrainAssessment terrain = optimizeSurface(supportYs, fluidTopYs);
+        return new Site(centerX, centerZ, terrain.score() + edgePenalty(bounds, centerX, centerZ), terrain);
+    }
+
     private static Site evaluateVirtualSite(
             ServerLevel level,
             ChunkGenerator generator,
@@ -423,12 +669,15 @@ final class AltarPlacementPlanner {
                         packXZ(x, z), ignored -> readVirtualSurfaceSample(level, generator, randomState, x, z)
                 )
         );
-        if (!sites.isEmpty()) return sites.getFirst();
+        return sites.isEmpty() ? virtualPenaltySite(level, chunk, bounds) : sites.getFirst();
+    }
+
+    private static Site virtualPenaltySite(ServerLevel level, ChunkSeed chunk, SearchBounds bounds) {
         int x = clamp((chunk.chunkX() << 4) + 8, bounds.minCenterX(), bounds.maxCenterX());
         int z = clamp((chunk.chunkZ() << 4) + 8, bounds.minCenterZ(), bounds.maxCenterZ());
-        SurfaceSample sample = readVirtualSurfaceSample(level, generator, randomState, x, z);
-        int target = sample == null ? level.getSeaLevel() : sample.supportY();
-        TerrainAssessment terrain = new TerrainAssessment(target, EFFECTIVE_REJECT_PENALTY * 10.0, 0.0, 0.0, 1.0, 0.0);
+        TerrainAssessment terrain = new TerrainAssessment(
+                level.getSeaLevel(), EFFECTIVE_REJECT_PENALTY * 10.0, 0.0, 0.0, 1.0, 0.0
+        );
         return new Site(x, z, terrain.score(), terrain);
     }
 
@@ -1081,8 +1330,14 @@ final class AltarPlacementPlanner {
         return (System.nanoTime() - startedNanos) / 1_000_000_000.0;
     }
 
-    private static String formatSeconds(double value) {
+    static String formatSeconds(double value) {
         return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    static String statusName(ChunkStatus status) {
+        if (status == ChunkStatus.FULL) return "FULL";
+        if (status == ChunkStatus.STRUCTURE_REFERENCES) return "STRUCTURE_REFERENCES";
+        return status.toString();
     }
 
     private static String format(double value) {
@@ -1129,6 +1384,7 @@ final class AltarPlacementPlanner {
         private int pendingExactCandidateIndex = -1;
         private ExactRole pendingExactRole;
         private ExactMode pendingExactMode;
+        private ChunkStatus pendingChunkStatus;
         private SelectionResult selection;
         private List<Plan> completedPlans;
 
@@ -1163,32 +1419,39 @@ final class AltarPlacementPlanner {
         }
     }
 
-    record PreparationStep(boolean complete, int candidateIndex, List<ChunkPos> requiredChunks, List<Plan> plans) {
-        private static PreparationStep candidate(int candidateIndex, List<ChunkPos> requiredChunks) {
-            return new PreparationStep(false, candidateIndex, requiredChunks, List.of());
+    record PreparationStep(boolean complete, int candidateIndex, ChunkStatus chunkStatus, List<ChunkPos> requiredChunks, List<Plan> plans) {
+        private static PreparationStep candidate(int candidateIndex, ChunkStatus chunkStatus, List<ChunkPos> requiredChunks) {
+            return new PreparationStep(false, candidateIndex, chunkStatus, requiredChunks, List.of());
         }
 
         private static PreparationStep complete(List<Plan> plans) {
-            return new PreparationStep(true, -1, List.of(), plans);
+            return new PreparationStep(true, -1, ChunkStatus.FULL, List.of(), plans);
         }
     }
 
     private static final class Candidate {
         private final ChunkSeed chunk;
-        private final Site virtualSmall;
+        private final Site coarseSmall;
+        private Site virtualSmall;
         private Site virtualLarge;
+        private boolean smallRefined;
         private boolean smallExactEvaluated;
         private boolean largeExactEvaluated;
         private boolean smallFallbackRequired;
         private boolean largeFallbackRequired;
+        private boolean smallFastStructurePrechecked;
+        private boolean smallFullStructurePrechecked;
+        private boolean largeFastStructurePrechecked;
+        private boolean largeFullStructurePrechecked;
         private Site exactSmall;
         private Site exactLarge;
         private String smallReject = "";
         private String largeReject = "";
 
-        private Candidate(ChunkSeed chunk, Site virtualSmall) {
+        private Candidate(ChunkSeed chunk, Site coarseSmall) {
             this.chunk = chunk;
-            this.virtualSmall = virtualSmall;
+            this.coarseSmall = coarseSmall;
+            this.virtualSmall = coarseSmall;
         }
 
         private Site usableSmall() {
