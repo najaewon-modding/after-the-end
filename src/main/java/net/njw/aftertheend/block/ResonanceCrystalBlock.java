@@ -15,6 +15,8 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -24,15 +26,22 @@ import org.jspecify.annotations.Nullable;
 
 public final class ResonanceCrystalBlock extends BaseEntityBlock {
     public static final MapCodec<ResonanceCrystalBlock> CODEC = simpleCodec(ResonanceCrystalBlock::new);
+    public static final BooleanProperty CALMED = BooleanProperty.create("calmed");
     private static final VoxelShape SHAPE = Block.column(12.0, 0.0, 16.0);
 
     public ResonanceCrystalBlock(BlockBehaviour.Properties properties) {
         super(properties);
+        registerDefaultState(stateDefinition.any().setValue(CALMED, false));
     }
 
     @Override
     public MapCodec<ResonanceCrystalBlock> codec() {
         return CODEC;
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(CALMED);
     }
 
     @Override

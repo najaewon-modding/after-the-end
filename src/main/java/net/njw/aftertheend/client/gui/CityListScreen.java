@@ -14,7 +14,7 @@ import net.njw.aftertheend.network.CityTeleportRequestPayload;
 import java.util.List;
 
 public final class CityListScreen extends Screen {
-    private static final int CONTENT_WIDTH = 320;
+    private static final int CONTENT_WIDTH = 332;
     private static final int CONTENT_HEIGHT = 166;
     private static final int LIST_WIDTH = 96;
     private static final int COLUMN_GAP = 12;
@@ -25,7 +25,7 @@ public final class CityListScreen extends Screen {
     private static final int BUTTON_GAP = 8;
     private static final int NAME_EDGE_PADDING = 2;
     private static final long MARQUEE_START_PAUSE_MS = 700L;
-    private static final long MARQUEE_END_PAUSE_MS = 450L;
+    private static final long MARQUEE_END_PAUSE_MS = 2000L;
     private static final float MARQUEE_SPEED_PIXELS_PER_SECOND = 24.0F;
 
     private static final int TEXT_COLOR = 0xFFFFFFFF;
@@ -40,6 +40,7 @@ public final class CityListScreen extends Screen {
 
     private int selectedIndex;
     private int scrollOffset;
+    private long selectedSinceMs = System.currentTimeMillis();
 
     public CityListScreen() {
         super(Component.translatable("gui.njw_after_the_end.city_list.title"));
@@ -121,7 +122,7 @@ public final class CityListScreen extends Screen {
         int overflow = textWidth - maxWidth;
         long moveDuration = Math.max(1L, (long) Math.ceil(overflow * 1000.0 / MARQUEE_SPEED_PIXELS_PER_SECOND));
         long cycleDuration = MARQUEE_START_PAUSE_MS + moveDuration + MARQUEE_END_PAUSE_MS;
-        long phase = Math.floorMod(System.currentTimeMillis(), cycleDuration);
+        long phase = Math.floorMod(System.currentTimeMillis() - selectedSinceMs, cycleDuration);
         int offset;
         if (phase < MARQUEE_START_PAUSE_MS) {
             offset = 0;
@@ -191,7 +192,10 @@ public final class CityListScreen extends Screen {
             int row = index - scrollOffset;
             int y = listTop + row * ROW_HEIGHT;
             if (isInside(click.x(), click.y(), left, y - 3, LIST_WIDTH, ROW_HEIGHT)) {
-                selectedIndex = index;
+                if (selectedIndex != index) {
+                    selectedIndex = index;
+                    selectedSinceMs = System.currentTimeMillis();
+                }
                 return true;
             }
         }

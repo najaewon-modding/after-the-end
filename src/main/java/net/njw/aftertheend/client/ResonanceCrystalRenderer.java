@@ -17,6 +17,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.njw.aftertheend.AfterTheEnd;
+import net.njw.aftertheend.block.ResonanceCrystalBlock;
 import net.njw.aftertheend.block.entity.ResonanceCrystalBlockEntity;
 import net.njw.aftertheend.registry.ModContent;
 
@@ -28,6 +29,7 @@ public final class ResonanceCrystalRenderer implements BlockEntityRenderer<Reson
     private static final int CORE_WHITE = 0xFFE2DEE5;
     private static final int BASE_PURPLE = 0xFF725780;
     private static final int FULL_BRIGHT = 0xF000F0;
+    private static final float CALMED_ANIMATION_SPEED = 0.25F;
 
     private final EndCrystalModel baseModel;
     private final EndCrystalModel outerModel;
@@ -44,15 +46,12 @@ public final class ResonanceCrystalRenderer implements BlockEntityRenderer<Reson
         baseModel.innerGlass.skipDraw = true;
         baseModel.cube.skipDraw = true;
 
-        outerModel.base.visible = false;
         outerModel.innerGlass.skipDraw = true;
         outerModel.cube.skipDraw = true;
 
-        innerModel.base.visible = false;
         innerModel.outerGlass.skipDraw = true;
         innerModel.cube.skipDraw = true;
 
-        coreModel.base.visible = false;
         coreModel.outerGlass.skipDraw = true;
         coreModel.innerGlass.skipDraw = true;
     }
@@ -72,20 +71,25 @@ public final class ResonanceCrystalRenderer implements BlockEntityRenderer<Reson
                                    Vec3 cameraPosition, net.minecraft.client.renderer.feature.ModelFeatureRenderer.CrumblingOverlay breakProgress) {
         BlockEntityRenderer.super.extractRenderState(blockEntity, state, partialTicks, cameraPosition, breakProgress);
         float gameTime = blockEntity.getLevel() == null ? partialTicks : blockEntity.getLevel().getGameTime() + partialTicks;
-        state.ageInTicks = gameTime;
-        state.horizontalScale = ResonanceCrystalBlockEntity.horizontalScale(gameTime);
-        state.verticalScale = ResonanceCrystalBlockEntity.verticalScale(gameTime);
+        state.calmed = blockEntity.getBlockState().getValue(ResonanceCrystalBlock.CALMED);
+        state.ageInTicks = state.calmed ? gameTime * CALMED_ANIMATION_SPEED : gameTime;
+        state.horizontalScale = state.calmed ? 1.0F : ResonanceCrystalBlockEntity.horizontalScale(gameTime);
+        state.verticalScale = state.calmed ? 1.0F : ResonanceCrystalBlockEntity.verticalScale(gameTime);
     }
 
     @Override
     public void submit(ResonanceCrystalRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
+        EndCrystalRenderState baseState = new EndCrystalRenderState();
+        baseState.ageInTicks = 0.0F;
+        baseState.showsBottom = true;
+
         EndCrystalRenderState crystalState = new EndCrystalRenderState();
         crystalState.ageInTicks = state.ageInTicks;
-        crystalState.showsBottom = true;
+        crystalState.showsBottom = false;
 
         poseStack.pushPose();
         poseStack.translate(0.5F, 0.0F, 0.5F);
-        submitLayer(baseModel, crystalState, poseStack, collector, state.lightCoords, BASE_PURPLE, state);
+        submitLayer(baseModel, baseState, poseStack, collector, state.lightCoords, BASE_PURPLE, state);
 
         poseStack.pushPose();
         poseStack.scale(state.horizontalScale, state.verticalScale, state.horizontalScale);

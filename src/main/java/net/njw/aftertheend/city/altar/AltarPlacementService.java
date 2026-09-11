@@ -114,6 +114,7 @@ public final class AltarPlacementService {
                     3
             );
             if (!placed) throw new IllegalStateException("Failed to place Altar template " + spec.templateId() + " for city " + city.id());
+            restoreRuinedSocketSupports(level, origin, spec);
 
             placements.add(new AltarPlacement(
                     city.id(), spec.templateId().toString(), origin.getX(), origin.getY(), origin.getZ(),
@@ -129,6 +130,12 @@ public final class AltarPlacementService {
                 placements.size(), city.id(), largeCount, ruinedCount
         );
         return List.copyOf(placements);
+    }
+
+    private static void restoreRuinedSocketSupports(ServerLevel level, BlockPos origin, AltarSpec spec) {
+        if (!spec.ruined() || spec.large()) return;
+        level.setBlock(origin.offset(5, 2, 2), Blocks.CHISELED_STONE_BRICKS.defaultBlockState(), 3);
+        level.setBlock(origin.offset(8, 2, 5), Blocks.CHISELED_STONE_BRICKS.defaultBlockState(), 3);
     }
 
     private static int rollAltarCount(RandomSource random) {

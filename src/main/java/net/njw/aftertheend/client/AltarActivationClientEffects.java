@@ -19,8 +19,8 @@ import net.njw.aftertheend.network.AltarActivationPayload;
 
 @EventBusSubscriber(modid = AfterTheEnd.MODID, value = Dist.CLIENT)
 public final class AltarActivationClientEffects {
-    public static final int EFFECT_DURATION_TICKS = 160;
-    private static final int BEAM_START_TICK = 60;
+    public static final int EFFECT_DURATION_TICKS = 180;
+    private static final int BEAM_START_TICK = 80;
     private static final double EGG_RISE_HEIGHT = 10.0;
     private static final Map<EffectKey, Effect> EFFECTS = new LinkedHashMap<>();
 

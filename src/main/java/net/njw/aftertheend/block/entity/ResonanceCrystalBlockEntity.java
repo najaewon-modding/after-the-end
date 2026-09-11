@@ -14,7 +14,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.njw.aftertheend.city.altar.AltarRitualHandler;
+import net.njw.aftertheend.block.ResonanceCrystalBlock;
 import net.njw.aftertheend.registry.ModContent;
 
 public final class ResonanceCrystalBlockEntity extends BlockEntity {
@@ -30,8 +30,8 @@ public final class ResonanceCrystalBlockEntity extends BlockEntity {
 
     public static void serverTick(Level level, BlockPos pos, BlockState state, ResonanceCrystalBlockEntity blockEntity) {
         if (!(level instanceof ServerLevel serverLevel)) return;
+        if (state.getValue(ResonanceCrystalBlock.CALMED)) return;
         if (Math.floorMod(serverLevel.getGameTime(), PULSE_INTERVAL_TICKS) != ATTACK_TICK) return;
-        if (AltarRitualHandler.isResonanceSocket(serverLevel, pos)) return;
         pulse(serverLevel, pos);
     }
 

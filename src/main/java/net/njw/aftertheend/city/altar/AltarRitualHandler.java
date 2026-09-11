@@ -10,7 +10,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.entity.Display;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -22,6 +23,7 @@ import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.njw.aftertheend.AfterTheEnd;
+import net.njw.aftertheend.block.ResonanceCrystalBlock;
 import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityLifecycleService;
 import net.njw.aftertheend.city.CityManager;
@@ -31,7 +33,7 @@ import net.njw.aftertheend.registry.ModContent;
 public final class AltarRitualHandler {
     public static final int MAX_ACTIVATED_ALTARS_PER_CITY = 3;
     private static final int SCAN_INTERVAL_TICKS = 5;
-    private static final int RISE_DURATION_TICKS = 60;
+    private static final int RISE_DURATION_TICKS = 80;
     private static final int BEAM_DURATION_TICKS = 100;
     private static final int END_TICK = RISE_DURATION_TICKS + BEAM_DURATION_TICKS;
     private static final int SOUND_INTERVAL_TICKS = 20;
@@ -66,12 +68,17 @@ public final class AltarRitualHandler {
         RitualGeometry geometry = findSocketGeometry(level.getServer(), event.getPos(), true);
         if (geometry == null) return;
 
+        BlockState placedState = level.getBlockState(event.getPos());
+        if (!placedState.getValue(ResonanceCrystalBlock.CALMED)) {
+            level.setBlock(event.getPos(), placedState.setValue(ResonanceCrystalBlock.CALMED, true), 3);
+        }
+
         int occupied = 0;
         for (BlockPos socket : geometry.sockets()) if (level.getBlockState(socket).is(ModContent.RESONANCE_CRYSTAL.get())) occupied++;
-        float pitch = 0.78F + Math.min(occupied, 4) * 0.08F;
-        level.playSound(null, event.getPos(), SoundEvents.AMETHYST_BLOCK_RESONATE, SoundSource.BLOCKS, 1.0F, pitch);
-        level.sendParticles(new DustParticleOptions(SOCKET_COLOR, 0.9F), event.getPos().getX() + 0.5, event.getPos().getY() + 0.6,
-                event.getPos().getZ() + 0.5, 10, 0.25, 0.35, 0.25, 0.02);
+        float pitch = 1.02F + Math.min(occupied, 4) * 0.04F;
+        level.playSound(null, event.getPos(), SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.BLOCKS, 1.15F, pitch);
+        level.sendParticles(new DustParticleOptions(SOCKET_COLOR, 0.95F), event.getPos().getX() + 0.5, event.getPos().getY() + 0.6,
+                event.getPos().getZ() + 0.5, 14, 0.3, 0.4, 0.3, 0.025);
     }
 
     @SubscribeEvent
@@ -100,13 +107,22 @@ public final class AltarRitualHandler {
                 if (!hasRitualPattern(level, geometry)) continue;
 
                 BlockState eggState = level.getBlockState(geometry.center());
-                FallingBlockEntity floatingEgg = FallingBlockEntity.fall(level, geometry.center(), eggState);
-                floatingEgg.setNoGravity(true);
-                floatingEgg.setDeltaMovement(0.0, EGG_RISE_HEIGHT / RISE_DURATION_TICKS, 0.0);
+                ItemStack eggStack = new ItemStack(eggState.getBlock());
+                if (eggStack.isEmpty()) continue;
+                if (!level.removeBlock(geometry.center(), false)) continue;
+
+                Display.ItemDisplay floatingEgg = new Display.ItemDisplay(EntityType.ITEM_DISPLAY, level);
+                var slot = floatingEgg.getSlot(0);
+                if (slot == null || !slot.set(eggStack.copy())) {
+                    level.setBlock(geometry.center(), eggState, 3);
+                    continue;
+                }
+                floatingEgg.setPos(geometry.center().getX() + 0.5, geometry.center().getY() + 0.5, geometry.center().getZ() + 0.5);
+                level.addFreshEntity(floatingEgg);
 
                 activeSequence = new RitualSequence(
                         city.id(), targetCity.id(), placement.blockX(), placement.y(), placement.blockZ(), placement.large(),
-                        geometry, level.getGameTime(), eggState, floatingEgg
+                        geometry, level.getGameTime(), eggState, eggStack, floatingEgg
                 );
                 level.playSound(null, geometry.center(), SoundEvents.END_PORTAL_FRAME_FILL, SoundSource.BLOCKS, 1.0F, 0.65F);
                 level.sendParticles(ParticleTypes.PORTAL, geometry.center().getX() + 0.5, geometry.center().getY() + 0.8,
@@ -130,24 +146,23 @@ public final class AltarRitualHandler {
             return;
         }
 
+        BlockPos center = sequence.geometry.center();
         if (elapsed < RISE_DURATION_TICKS) {
-            sequence.floatingEgg.setNoGravity(true);
-            sequence.floatingEgg.setDeltaMovement(0.0, EGG_RISE_HEIGHT / RISE_DURATION_TICKS, 0.0);
+            double progress = Math.clamp(elapsed / (double) RISE_DURATION_TICKS, 0.0, 1.0);
+            double eased = progress * progress * (3.0 - 2.0 * progress);
+            sequence.floatingEgg.setPos(center.getX() + 0.5, center.getY() + 0.5 + EGG_RISE_HEIGHT * eased, center.getZ() + 0.5);
             if (elapsed > 0 && elapsed % SOUND_INTERVAL_TICKS == 0) {
-                float pitch = 0.82F + 0.16F * (elapsed / (float) RISE_DURATION_TICKS);
-                level.playSound(null, sequence.geometry.center(), SoundEvents.AMETHYST_BLOCK_RESONATE, SoundSource.BLOCKS, 0.75F, pitch);
+                float pitch = 0.78F + 0.18F * (elapsed / (float) RISE_DURATION_TICKS);
+                level.playSound(null, center, SoundEvents.AMETHYST_BLOCK_RESONATE, SoundSource.BLOCKS, 0.8F, pitch);
             }
         } else {
-            BlockPos center = sequence.geometry.center();
-            sequence.floatingEgg.setNoGravity(true);
-            sequence.floatingEgg.setDeltaMovement(0.0, 0.0, 0.0);
-            sequence.floatingEgg.setPos(center.getX() + 0.5, center.getY() + EGG_RISE_HEIGHT, center.getZ() + 0.5);
+            sequence.floatingEgg.setPos(center.getX() + 0.5, center.getY() + 0.5 + EGG_RISE_HEIGHT, center.getZ() + 0.5);
             if (elapsed == RISE_DURATION_TICKS) {
-                level.playSound(null, center, SoundEvents.END_PORTAL_FRAME_FILL, SoundSource.BLOCKS, 1.2F, 1.15F);
+                level.playSound(null, center, SoundEvents.END_PORTAL_FRAME_FILL, SoundSource.BLOCKS, 1.25F, 1.12F);
                 level.sendParticles(ParticleTypes.END_ROD, center.getX() + 0.5, center.getY() + EGG_RISE_HEIGHT + 0.5,
                         center.getZ() + 0.5, 36, 0.6, 0.6, 0.6, 0.03);
-            } else if (elapsed % SOUND_INTERVAL_TICKS == 0) {
-                level.playSound(null, center, SoundEvents.AMETHYST_BLOCK_RESONATE, SoundSource.BLOCKS, 0.7F, 0.72F);
+            } else if ((elapsed - RISE_DURATION_TICKS) % SOUND_INTERVAL_TICKS == 0) {
+                level.playSound(null, center, SoundEvents.AMETHYST_BLOCK_RESONATE, SoundSource.BLOCKS, 0.72F, 0.74F);
             }
         }
 
@@ -173,27 +188,33 @@ public final class AltarRitualHandler {
             return;
         }
 
-        try {
-            CityLifecycleService.unlockCity(server, sequence.targetCityId);
-        } catch (RuntimeException exception) {
-            AltarManager.setActivated(server, sequence.cityId, sequence.originX, sequence.originY, sequence.originZ, false);
-            cancel(level, sequence, "city unlock failed: " + exception.getMessage());
-            AfterTheEnd.LOGGER.error("Altar ritual failed while unlocking city {}", sequence.targetCityId, exception);
-            return;
-        }
-
         Vec3 eggPosition = sequence.floatingEgg.position();
         sequence.floatingEgg.discard();
-        ItemStack eggStack = new ItemStack(sequence.eggState.getBlock());
-        if (!eggStack.isEmpty()) level.addFreshEntity(new ItemEntity(level, eggPosition.x, eggPosition.y, eggPosition.z, eggStack));
+        ItemEntity eggDrop = new ItemEntity(level, eggPosition.x, eggPosition.y, eggPosition.z, sequence.eggStack.copy());
+        level.addFreshEntity(eggDrop);
         for (BlockPos socket : sequence.geometry.sockets()) level.removeBlock(socket, false);
 
         level.sendParticles(new DustParticleOptions(FLASH_COLOR, 1.6F), eggPosition.x, eggPosition.y + 0.5, eggPosition.z,
                 120, 3.0, 2.0, 3.0, 0.08);
         level.sendParticles(ParticleTypes.END_ROD, eggPosition.x, eggPosition.y + 0.5, eggPosition.z,
                 64, 2.5, 1.5, 2.5, 0.07);
-        level.playSound(null, sequence.geometry.center(), SoundEvents.END_PORTAL_SPAWN, SoundSource.BLOCKS, 1.8F, 1.0F);
+        level.playSound(null, sequence.geometry.center(), SoundEvents.END_PORTAL_SPAWN, SoundSource.BLOCKS, 1.9F, 1.0F);
         broadcastEffect(level, sequence, true);
+
+        try {
+            CityLifecycleService.unlockCity(server, sequence.targetCityId);
+        } catch (RuntimeException exception) {
+            AltarManager.setActivated(server, sequence.cityId, sequence.originX, sequence.originY, sequence.originZ, false);
+            eggDrop.discard();
+            if (level.getBlockState(sequence.geometry.center()).isAir()) level.setBlock(sequence.geometry.center(), sequence.eggState, 3);
+            for (BlockPos socket : sequence.geometry.sockets()) {
+                level.setBlock(socket, ModContent.RESONANCE_CRYSTAL.get().defaultBlockState().setValue(ResonanceCrystalBlock.CALMED, true), 3);
+            }
+            AfterTheEnd.LOGGER.error("Altar ritual failed while unlocking city {}", sequence.targetCityId, exception);
+            activeSequence = null;
+            return;
+        }
+
         activeSequence = null;
         AfterTheEnd.LOGGER.info("Activated Altar and unlocked city {} from city {}.", sequence.targetCityId, sequence.cityId);
     }
@@ -212,8 +233,7 @@ public final class AltarRitualHandler {
             level.setBlock(sequence.geometry.center(), sequence.eggState, 3);
             return;
         }
-        ItemStack eggStack = new ItemStack(sequence.eggState.getBlock());
-        if (!eggStack.isEmpty()) level.addFreshEntity(new ItemEntity(level, dropPosition.x, dropPosition.y, dropPosition.z, eggStack));
+        level.addFreshEntity(new ItemEntity(level, dropPosition.x, dropPosition.y, dropPosition.z, sequence.eggStack.copy()));
     }
 
     private static void broadcastEffect(ServerLevel level, RitualSequence sequence, boolean cancelled) {
@@ -279,10 +299,12 @@ public final class AltarRitualHandler {
         private final RitualGeometry geometry;
         private final long startGameTime;
         private final BlockState eggState;
-        private final FallingBlockEntity floatingEgg;
+        private final ItemStack eggStack;
+        private final Display.ItemDisplay floatingEgg;
 
         private RitualSequence(UUID cityId, UUID targetCityId, int originX, int originY, int originZ, boolean large,
-                               RitualGeometry geometry, long startGameTime, BlockState eggState, FallingBlockEntity floatingEgg) {
+                               RitualGeometry geometry, long startGameTime, BlockState eggState, ItemStack eggStack,
+                               Display.ItemDisplay floatingEgg) {
             this.cityId = cityId;
             this.targetCityId = targetCityId;
             this.originX = originX;
@@ -292,6 +314,7 @@ public final class AltarRitualHandler {
             this.geometry = geometry;
             this.startGameTime = startGameTime;
             this.eggState = eggState;
+            this.eggStack = eggStack;
             this.floatingEgg = floatingEgg;
         }
     }

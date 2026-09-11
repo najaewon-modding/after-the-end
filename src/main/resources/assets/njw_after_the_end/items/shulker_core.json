@@ -1,11 +1,11 @@
 {
   "model": {
     "type": "minecraft:model",
-    "model": "minecraft:item/slime_ball",
+    "model": "njw_after_the_end:item/shulker_core",
     "tints": [
       {
         "type": "minecraft:constant",
-        "value": -3620440
+        "value": -3554648
       }
     ]
   }
