@@ -1,7 +1,6 @@
 package net.njw.aftertheend.city.altar;
 
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -30,6 +29,8 @@ public final class HiddenCityPreparationService {
     private static AltarPlacementPlanner.PreparationStep activeStep;
     private static CompletableFuture<?> pendingChunkFuture;
     private static ChunkPos pendingChunk;
+    private static ChunkStatus pendingChunkStatus;
+    private static long pendingChunkStartedNanos;
 
     private HiddenCityPreparationService() { }
 
@@ -133,11 +134,11 @@ public final class HiddenCityPreparationService {
             ServerLevel level = activePreparation.level();
             while (!CHUNKS_TO_ENSURE.isEmpty()) {
                 ChunkPos next = CHUNKS_TO_ENSURE.peekFirst();
-                if (level.getChunkSource().getChunkNow(next.x(), next.z()) != null) {
+                if (isPrepared(level, next, activeStep.chunkStatus())) {
                     CHUNKS_TO_ENSURE.removeFirst();
                     continue;
                 }
-                startChunkFuture(level, next);
+                startChunkFuture(level, next, activeStep.chunkStatus());
                 return;
             }
 
@@ -160,14 +161,24 @@ public final class HiddenCityPreparationService {
         }
     }
 
-    private static void startChunkFuture(ServerLevel level, ChunkPos chunk) {
+    private static boolean isPrepared(ServerLevel level, ChunkPos chunk, ChunkStatus status) {
+        if (status == ChunkStatus.FULL) return level.getChunkSource().getChunkNow(chunk.x(), chunk.z()) != null;
+        return level.getChunkSource().getChunk(chunk.x(), chunk.z(), status, false) != null;
+    }
+
+    private static void startChunkFuture(ServerLevel level, ChunkPos chunk, ChunkStatus status) {
         pendingChunk = chunk;
+        pendingChunkStatus = status;
+        pendingChunkStartedNanos = System.nanoTime();
         pendingChunkFuture = CompletableFuture
                 .supplyAsync(() -> level.getChunkSource().getChunkFuture(
-                        chunk.x(), chunk.z(), ChunkStatus.FULL, true
+                        chunk.x(), chunk.z(), status, true
                 ))
                 .thenCompose(future -> future);
-        AfterTheEnd.LOGGER.debug("Hidden city preparation requested async chunk ({}, {})", chunk.x(), chunk.z());
+        AfterTheEnd.LOGGER.debug(
+                "Hidden city preparation requested async chunk ({}, {}) status={}",
+                chunk.x(), chunk.z(), AltarPlacementPlanner.statusName(status)
+        );
     }
 
     private static void finishPendingChunk() {
@@ -176,11 +187,18 @@ public final class HiddenCityPreparationService {
         } catch (CompletionException exception) {
             throw new IllegalStateException("Async hidden-city chunk generation failed at " + pendingChunk, exception.getCause());
         }
+        AfterTheEnd.LOGGER.info(
+                "chunk ({}, {}) {} {}sec city={}",
+                pendingChunk.x(), pendingChunk.z(), AltarPlacementPlanner.statusName(pendingChunkStatus),
+                AltarPlacementPlanner.formatSeconds((System.nanoTime() - pendingChunkStartedNanos) / 1_000_000_000.0), activeCityId
+        );
         if (!CHUNKS_TO_ENSURE.isEmpty() && CHUNKS_TO_ENSURE.peekFirst().equals(pendingChunk)) {
             CHUNKS_TO_ENSURE.removeFirst();
         }
         pendingChunkFuture = null;
         pendingChunk = null;
+        pendingChunkStatus = null;
+        pendingChunkStartedNanos = 0L;
     }
 
     private static void resetActive(boolean cancelFuture) {
@@ -190,6 +208,8 @@ public final class HiddenCityPreparationService {
         activeStep = null;
         pendingChunkFuture = null;
         pendingChunk = null;
+        pendingChunkStatus = null;
+        pendingChunkStartedNanos = 0L;
         CHUNKS_TO_ENSURE.clear();
     }
 
