@@ -78,60 +78,112 @@ final class AltarPlacementPlanner {
         long started = System.nanoTime();
         for (ChunkSeed chunk : sampledChunks) {
             Site virtualSmall = evaluateVirtualSite(level, generator, randomState, virtualSurfaceCache, chunk, SMALL, smallBounds);
-            Site virtualLarge = hasLarge
-                    ? evaluateVirtualSite(level, generator, randomState, virtualSurfaceCache, chunk, LARGE, largeBounds)
-                    : null;
-            candidates.add(new Candidate(chunk, virtualSmall, virtualLarge));
+            candidates.add(new Candidate(chunk, virtualSmall));
             AfterTheEnd.LOGGER.info(
-                    "Altar planner {}: virtual candidate [{}/{}] chunk=({}, {}) small={}{}",
-                    cityId, chunk.sampleIndex() + 1, sampledChunks.size(), chunk.chunkX(), chunk.chunkZ(),
-                    format(virtualSmall.score()), hasLarge ? " large=" + format(virtualLarge.score()) : ""
+                    "[{}/{}] chunk=({}, {}) small={} city={}",
+                    chunk.sampleIndex() + 1, sampledChunks.size(), chunk.chunkX(), chunk.chunkZ(), format(virtualSmall.score()), cityId
             );
         }
         double targetDistance = preferredDistance(region, count);
         AfterTheEnd.LOGGER.info(
-                "Altar planner {}: virtual-evaluated {} FPS candidates in {}sec without loading candidate chunks.",
+                "Altar planner {}: virtual-evaluated {} Small FPS candidates in {}sec without loading candidate chunks.",
                 cityId, candidates.size(), formatSeconds(elapsedSeconds(started))
         );
         return new PreparationSession(
-                level, region, List.copyOf(requests), seed, cityId, count, hasLarge,
-                smallBounds, largeBounds, candidates, targetDistance
+                level, List.copyOf(requests), seed, cityId, count, hasLarge, smallBounds, largeBounds,
+                generator, randomState, virtualSurfaceCache, candidates, targetDistance
         );
     }
 
     static PreparationStep advancePreparation(PreparationSession session) {
         if (session.completedPlans != null) return PreparationStep.complete(session.completedPlans);
         while (true) {
-            RandomSource random = RandomSource.create(mix(
-                    session.seed ^ OPTIMIZER_SEED_SALT ^ ((long) session.optimizationRound++ * 0x9e3779b97f4a7c15L)
-            ));
-            SelectionResult selection = optimizeJointSelection(
-                    session.candidates, session.count, session.hasLarge, session.targetDistance, random
-            );
-            session.selection = selection;
+            if (session.selection == null) {
+                RandomSource random = RandomSource.create(mix(
+                        session.seed ^ OPTIMIZER_SEED_SALT ^ ((long) session.optimizationRound++ * 0x9e3779b97f4a7c15L)
+                ));
+                session.selection = optimizeSmallSelection(
+                        session.candidates, session.count, session.hasLarge, session.targetDistance, random
+                );
+            }
+            SelectionResult selection = session.selection;
+
+            boolean invalidSmall = false;
             for (int candidateIndex : selection.selected()) {
                 Candidate candidate = session.candidates.get(candidateIndex);
-                if (!candidate.exactEvaluated) {
+                if (!candidate.smallExactEvaluated) {
+                    session.pendingExactCandidateIndex = candidateIndex;
+                    session.pendingExactRole = ExactRole.SMALL;
                     return PreparationStep.candidate(candidateIndex, requiredChunks(session, candidateIndex));
                 }
+                if (candidate.usableSmall() == null) invalidSmall = true;
+            }
+            if (invalidSmall) {
+                session.selection = null;
+                continue;
             }
 
-            int outlier = findExactOutlier(selection, session.candidates);
+            int outlier = findSmallExactOutlier(selection, session.candidates);
             if (outlier >= 0) {
                 Candidate candidate = session.candidates.get(outlier);
                 candidate.smallReject = "exact terrain outlier";
-                candidate.largeReject = "exact terrain outlier";
                 AfterTheEnd.LOGGER.info(
-                        "Altar planner {}: rejected exact candidate sample={} chunk=({}, {}) as terrain-score outlier; re-optimizing.",
+                        "Altar planner {}: rejected Small exact candidate sample={} chunk=({}, {}) as terrain-score outlier; re-optimizing.",
                         session.cityId, candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ()
                 );
+                session.selection = null;
                 continue;
+            }
+
+            if (session.hasLarge) {
+                for (int position = 0; position < selection.selected().length; position++) {
+                    int candidateIndex = selection.selected()[position];
+                    Candidate candidate = session.candidates.get(candidateIndex);
+                    if (candidate.virtualLarge != null) continue;
+                    candidate.virtualLarge = evaluateVirtualSite(
+                            session.level, session.generator, session.randomState, session.virtualSurfaceCache,
+                            candidate.chunk, LARGE, session.largeBounds
+                    );
+                    AfterTheEnd.LOGGER.info(
+                            "[{}/{}] chunk=({}, {}) large={} city={}",
+                            position + 1, selection.selected().length, candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
+                            format(candidate.virtualLarge.score()), session.cityId
+                    );
+                }
+
+                AssignmentScore largeAssignment = bestLargeAssignment(selection.selected(), session.candidates, session.targetDistance);
+                if (largeAssignment.largeCandidateIndex() < 0) {
+                    AfterTheEnd.LOGGER.info(
+                            "Altar planner {}: all {} Small-selected candidates failed Large exact validation; selecting a new Small candidate set.",
+                            session.cityId, selection.selected().length
+                    );
+                    session.selection = null;
+                    continue;
+                }
+                selection = new SelectionResult(
+                        selection.selected(), largeAssignment.largeCandidateIndex(), largeAssignment.objective(), selection.restartObjectives()
+                );
+                session.selection = selection;
+                Candidate largeCandidate = session.candidates.get(selection.largeCandidateIndex());
+                if (!largeCandidate.largeExactEvaluated) {
+                    session.pendingExactCandidateIndex = selection.largeCandidateIndex();
+                    session.pendingExactRole = ExactRole.LARGE;
+                    return PreparationStep.candidate(selection.largeCandidateIndex(), requiredChunks(session, selection.largeCandidateIndex()));
+                }
+                if (largeCandidate.usableLarge() == null) {
+                    session.selection = new SelectionResult(
+                            selection.selected(), -1, evaluateSmallObjective(
+                                    selection.selected(), session.candidates, session.targetDistance, session.hasLarge
+                            ), selection.restartObjectives()
+                    );
+                    continue;
+                }
             }
 
             List<Plan> plans = buildPlans(session.requests, selection, session.candidates);
             session.completedPlans = List.copyOf(plans);
             AfterTheEnd.LOGGER.info(
-                    "Altar planner {}: FPS candidates={}, exact candidates generated={}, structures={}, targetDistance={} blocks, objective={}",
+                    "Altar planner {}: FPS candidates={}, exact evaluations={}, structures={}, targetDistance={} blocks, objective={}",
                     session.cityId, session.candidates.size(), session.exactEvaluations, session.count,
                     format(session.targetDistance), format(selection.objective())
             );
@@ -172,40 +224,49 @@ final class AltarPlacementPlanner {
     static void exactEvaluateLoaded(PreparationSession session, int candidateIndex) {
         List<ChunkPos> missing = missingRequiredChunks(session, candidateIndex);
         if (!missing.isEmpty()) throw new IllegalStateException("Exact Altar evaluation requires loaded chunks: " + missing);
-        Candidate candidate = session.candidates.get(candidateIndex);
-        if (candidate.exactEvaluated) return;
-        long started = System.nanoTime();
-        ActualSiteResult smallResult = evaluateActualSite(session.level, candidate.chunk, SMALL, session.smallBounds);
-        candidate.exactSmall = smallResult.site();
-        candidate.smallReject = exactRejectReason(candidate.virtualSmall, smallResult, "small");
-        if (session.hasLarge) {
-            ActualSiteResult largeResult = evaluateActualSite(session.level, candidate.chunk, LARGE, session.largeBounds);
-            candidate.exactLarge = largeResult.site();
-            candidate.largeReject = exactRejectReason(candidate.virtualLarge, largeResult, "large");
+        if (session.pendingExactRole == null || session.pendingExactCandidateIndex != candidateIndex) {
+            throw new IllegalStateException("Unexpected exact Altar evaluation request for candidate " + candidateIndex);
         }
-        candidate.exactEvaluated = true;
-        session.exactEvaluations++;
-        AfterTheEnd.LOGGER.info(
-                "Altar exact eval sample={} chunk=({}, {}) {}sec small={}{}{}",
-                candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ(), formatSeconds(elapsedSeconds(started)),
-                candidate.exactSmall == null ? "null" : format(candidate.exactSmall.score()),
-                candidate.smallReject.isEmpty() ? "" : " reject=" + candidate.smallReject,
-                session.hasLarge ? " large=" + (candidate.exactLarge == null ? "null" : format(candidate.exactLarge.score()))
-                        + (candidate.largeReject.isEmpty() ? "" : " reject=" + candidate.largeReject) : ""
-        );
+        Candidate candidate = session.candidates.get(candidateIndex);
+        long started = System.nanoTime();
+        if (session.pendingExactRole == ExactRole.SMALL) {
+            if (!candidate.smallExactEvaluated) {
+                ActualSiteResult result = evaluateActualSite(session.level, candidate.chunk, SMALL, session.smallBounds);
+                candidate.exactSmall = result.site();
+                candidate.smallReject = exactRejectReason(candidate.virtualSmall, result, "small");
+                candidate.smallExactEvaluated = true;
+                session.exactEvaluations++;
+                AfterTheEnd.LOGGER.info(
+                        "Altar exact eval sample={} chunk=({}, {}) {}sec small={}{} city={}",
+                        candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
+                        formatSeconds(elapsedSeconds(started)), candidate.exactSmall == null ? "null" : format(candidate.exactSmall.score()),
+                        candidate.smallReject.isEmpty() ? "" : " reject=" + candidate.smallReject, session.cityId
+                );
+            }
+        } else if (!candidate.largeExactEvaluated) {
+            ActualSiteResult result = evaluateActualSite(session.level, candidate.chunk, LARGE, session.largeBounds);
+            candidate.exactLarge = result.site();
+            candidate.largeReject = exactRejectReason(candidate.virtualLarge, result, "large");
+            candidate.largeExactEvaluated = true;
+            session.exactEvaluations++;
+            AfterTheEnd.LOGGER.info(
+                    "Altar exact eval sample={} chunk=({}, {}) {}sec large={}{} city={}",
+                    candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
+                    formatSeconds(elapsedSeconds(started)), candidate.exactLarge == null ? "null" : format(candidate.exactLarge.score()),
+                    candidate.largeReject.isEmpty() ? "" : " reject=" + candidate.largeReject, session.cityId
+            );
+        }
+        session.pendingExactRole = null;
+        session.pendingExactCandidateIndex = -1;
     }
 
     private static List<Plan> buildPlans(List<Request> requests, SelectionResult selection, List<Candidate> candidates) {
-        List<Request> smallRequests = requests.stream()
-                .filter(request -> !request.large())
-                .sorted(Comparator.comparingInt(Request::specIndex))
-                .toList();
+        List<Request> smallRequests = requests.stream().filter(request -> !request.large())
+                .sorted(Comparator.comparingInt(Request::specIndex)).toList();
         Request largeRequest = requests.stream().filter(Request::large).findFirst().orElse(null);
         List<Integer> smallCandidates = Arrays.stream(selection.selected())
-                .filter(index -> index != selection.largeCandidateIndex())
-                .boxed()
-                .sorted(Comparator.comparingInt(index -> candidates.get(index).chunk.sampleIndex()))
-                .toList();
+                .filter(index -> index != selection.largeCandidateIndex()).boxed()
+                .sorted(Comparator.comparingInt(index -> candidates.get(index).chunk.sampleIndex())).toList();
         List<Plan> result = new ArrayList<>(requests.size());
         if (largeRequest != null) {
             if (selection.largeCandidateIndex() < 0) throw new IllegalStateException("Altar optimizer did not assign the large altar.");
@@ -219,8 +280,19 @@ final class AltarPlacementPlanner {
     }
 
     private static Plan toPlan(int specIndex, Candidate candidate, boolean large) {
-        Site site = large ? candidate.usableLarge() : candidate.usableSmall();
-        if (site == null || !candidate.exactEvaluated) throw new IllegalStateException("Final Altar candidate was not exact-validated.");
+        Site site;
+        if (large) {
+            if (!candidate.largeExactEvaluated || !candidate.largeReject.isEmpty()) {
+                throw new IllegalStateException("Final Large Altar candidate was not exact-validated.");
+            }
+            site = candidate.exactLarge;
+        } else {
+            if (!candidate.smallExactEvaluated || !candidate.smallReject.isEmpty()) {
+                throw new IllegalStateException("Final Small Altar candidate was not exact-validated.");
+            }
+            site = candidate.exactSmall;
+        }
+        if (site == null) throw new IllegalStateException("Final Altar candidate has no exact site.");
         TerrainAssessment terrain = site.terrain();
         return new Plan(
                 specIndex, candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
@@ -252,15 +324,12 @@ final class AltarPlacementPlanner {
         return "";
     }
 
-    private static int findExactOutlier(SelectionResult selection, List<Candidate> candidates) {
+    private static int findSmallExactOutlier(SelectionResult selection, List<Candidate> candidates) {
         List<IndexedScore> scores = new ArrayList<>();
         for (int index : selection.selected()) {
             Candidate candidate = candidates.get(index);
-            boolean large = index == selection.largeCandidateIndex();
-            Site site = large ? candidate.exactLarge : candidate.exactSmall;
-            String reject = large ? candidate.largeReject : candidate.smallReject;
-            if (!candidate.exactEvaluated || site == null || !reject.isEmpty()) continue;
-            scores.add(new IndexedScore(index, site.score()));
+            if (!candidate.smallExactEvaluated || candidate.exactSmall == null || !candidate.smallReject.isEmpty()) continue;
+            scores.add(new IndexedScore(index, candidate.exactSmall.score()));
         }
         if (scores.size() < 3) return -1;
         double[] sorted = scores.stream().mapToDouble(IndexedScore::score).sorted().toArray();
@@ -448,7 +517,7 @@ final class AltarPlacementPlanner {
         );
     }
 
-    private static SelectionResult optimizeJointSelection(
+    private static SelectionResult optimizeSmallSelection(
             List<Candidate> candidates,
             int count,
             boolean hasLarge,
@@ -458,130 +527,130 @@ final class AltarPlacementPlanner {
         if (candidates.size() < count) throw new IllegalStateException("Not enough Altar candidates.");
         SelectionResult globalBest = null;
         List<Double> restartObjectives = new ArrayList<>();
-        int[] deterministic = deterministicInitialization(candidates, count, hasLarge);
-        SelectionResult deterministicResult = improveByJointSwaps(deterministic, candidates, hasLarge, targetDistance);
+        int[] deterministic = deterministicInitialization(candidates, count);
+        SelectionResult deterministicResult = improveBySmallSwaps(deterministic, candidates, hasLarge, targetDistance);
         restartObjectives.add(deterministicResult.objective());
         if (Double.isFinite(deterministicResult.objective())) globalBest = deterministicResult;
         for (int restart = 1; restart < OPTIMIZER_RESTARTS; restart++) {
-            int[] initial = randomFeasibleInitialization(candidates, count, hasLarge, random);
+            int[] initial = randomFeasibleInitialization(candidates, count, random);
             if (initial == null) continue;
-            SelectionResult local = improveByJointSwaps(initial, candidates, hasLarge, targetDistance);
+            SelectionResult local = improveBySmallSwaps(initial, candidates, hasLarge, targetDistance);
             restartObjectives.add(local.objective());
             if (Double.isFinite(local.objective()) && (globalBest == null || local.objective() < globalBest.objective())) globalBest = local;
         }
-        if (globalBest == null) throw new IllegalStateException("No feasible Altar candidate combination remains after exact validation.");
-        return new SelectionResult(
-                globalBest.selected(), globalBest.largeCandidateIndex(), globalBest.objective(), List.copyOf(restartObjectives)
-        );
+        if (globalBest == null) throw new IllegalStateException("No feasible Small Altar candidate combination remains after exact validation.");
+        return new SelectionResult(globalBest.selected(), -1, globalBest.objective(), List.copyOf(restartObjectives));
     }
 
-    private static int[] deterministicInitialization(List<Candidate> candidates, int count, boolean hasLarge) {
+    private static int[] deterministicInitialization(List<Candidate> candidates, int count) {
         List<Integer> indices = new ArrayList<>();
-        for (int i = 0; i < candidates.size(); i++) {
-            Candidate candidate = candidates.get(i);
-            if (candidate.usableSmall() != null || hasLarge && candidate.usableLarge() != null) indices.add(i);
-        }
-        indices.sort(Comparator.comparingDouble(index -> candidatePriority(candidates.get(index), hasLarge)));
-        if (indices.size() < count) throw new IllegalStateException("Not enough usable Altar candidates remain.");
+        for (int i = 0; i < candidates.size(); i++) if (candidates.get(i).usableSmall() != null) indices.add(i);
+        indices.sort(Comparator.comparingDouble(index -> candidates.get(index).usableSmall().score()));
+        if (indices.size() < count) throw new IllegalStateException("Not enough usable Small Altar candidates remain.");
         int[] selected = new int[count];
         for (int i = 0; i < count; i++) selected[i] = indices.get(i);
-        if (Double.isFinite(bestAssignment(selected, candidates, hasLarge, 1.0).objective())) return selected;
-        for (int replacement = count; replacement < indices.size(); replacement++) {
-            for (int slot = 0; slot < count; slot++) {
-                int old = selected[slot];
-                selected[slot] = indices.get(replacement);
-                if (Double.isFinite(bestAssignment(selected, candidates, hasLarge, 1.0).objective())) return selected;
-                selected[slot] = old;
-            }
-        }
         return selected;
     }
 
-    private static double candidatePriority(Candidate candidate, boolean hasLarge) {
-        double small = candidate.usableSmall() == null ? Double.POSITIVE_INFINITY : candidate.usableSmall().score();
-        double large = !hasLarge || candidate.usableLarge() == null ? Double.POSITIVE_INFINITY : candidate.usableLarge().score();
-        return Math.min(small, large);
-    }
-
-    private static int[] randomFeasibleInitialization(
-            List<Candidate> candidates,
-            int count,
-            boolean hasLarge,
-            RandomSource random
-    ) {
+    private static int[] randomFeasibleInitialization(List<Candidate> candidates, int count, RandomSource random) {
         int[] pool = new int[candidates.size()];
         int poolSize = 0;
-        for (int i = 0; i < candidates.size(); i++) {
-            Candidate candidate = candidates.get(i);
-            if (candidate.usableSmall() != null || hasLarge && candidate.usableLarge() != null) pool[poolSize++] = i;
-        }
+        for (int i = 0; i < candidates.size(); i++) if (candidates.get(i).usableSmall() != null) pool[poolSize++] = i;
         if (poolSize < count) return null;
-        for (int attempt = 0; attempt < 64; attempt++) {
-            for (int i = 0; i < count; i++) {
-                int swap = i + random.nextInt(poolSize - i);
-                int temp = pool[i];
-                pool[i] = pool[swap];
-                pool[swap] = temp;
-            }
-            int[] selected = Arrays.copyOf(pool, count);
-            if (Double.isFinite(bestAssignment(selected, candidates, hasLarge, 1.0).objective())) return selected;
+        for (int i = 0; i < count; i++) {
+            int swap = i + random.nextInt(poolSize - i);
+            int temp = pool[i];
+            pool[i] = pool[swap];
+            pool[swap] = temp;
         }
-        return null;
+        return Arrays.copyOf(pool, count);
     }
 
-    private static SelectionResult improveByJointSwaps(
+    private static SelectionResult improveBySmallSwaps(
             int[] initial,
             List<Candidate> candidates,
             boolean hasLarge,
             double targetDistance
     ) {
         int[] current = Arrays.copyOf(initial, initial.length);
-        AssignmentScore currentScore = bestAssignment(current, candidates, hasLarge, targetDistance);
+        double currentObjective = evaluateSmallObjective(current, candidates, targetDistance, hasLarge);
         for (int pass = 0; pass < OPTIMIZER_MAX_PASSES; pass++) {
             boolean[] chosen = new boolean[candidates.size()];
             for (int index : current) chosen[index] = true;
-            double bestObjective = currentScore.objective();
+            double bestObjective = currentObjective;
             int bestSlot = -1;
             int bestCandidate = -1;
-            AssignmentScore bestScore = currentScore;
             for (int slot = 0; slot < current.length; slot++) {
                 int old = current[slot];
                 for (int candidateIndex = 0; candidateIndex < candidates.size(); candidateIndex++) {
-                    if (chosen[candidateIndex]) continue;
-                    Candidate candidate = candidates.get(candidateIndex);
-                    if (candidate.usableSmall() == null && (!hasLarge || candidate.usableLarge() == null)) continue;
+                    if (chosen[candidateIndex] || candidates.get(candidateIndex).usableSmall() == null) continue;
                     current[slot] = candidateIndex;
-                    AssignmentScore score = bestAssignment(current, candidates, hasLarge, targetDistance);
-                    if (score.objective() + 1.0e-9 < bestObjective) {
-                        bestObjective = score.objective();
+                    double objective = evaluateSmallObjective(current, candidates, targetDistance, hasLarge);
+                    if (objective + 1.0e-9 < bestObjective) {
+                        bestObjective = objective;
                         bestSlot = slot;
                         bestCandidate = candidateIndex;
-                        bestScore = score;
                     }
                 }
                 current[slot] = old;
             }
             if (bestSlot < 0) break;
             current[bestSlot] = bestCandidate;
-            currentScore = bestScore;
+            currentObjective = bestObjective;
         }
-        return new SelectionResult(
-                Arrays.copyOf(current, current.length), currentScore.largeCandidateIndex(), currentScore.objective(), List.of()
-        );
+        return new SelectionResult(Arrays.copyOf(current, current.length), -1, currentObjective, List.of());
     }
 
-    private static AssignmentScore bestAssignment(
+    private static double evaluateSmallObjective(
             int[] selected,
             List<Candidate> candidates,
-            boolean hasLarge,
-            double targetDistance
+            double targetDistance,
+            boolean hasLarge
     ) {
-        if (!hasLarge) return new AssignmentScore(evaluateObjective(selected, -1, candidates, targetDistance), -1);
+        if (hasLarge) {
+            boolean allLargeFailed = true;
+            for (int index : selected) {
+                Candidate candidate = candidates.get(index);
+                if (!candidate.largeExactEvaluated || candidate.largeReject.isEmpty()) {
+                    allLargeFailed = false;
+                    break;
+                }
+            }
+            if (allLargeFailed) return Double.POSITIVE_INFINITY;
+        }
+        Site[] sites = new Site[selected.length];
+        int[] widths = new int[selected.length];
+        for (int i = 0; i < selected.length; i++) {
+            Site site = candidates.get(selected[i]).usableSmall();
+            if (site == null) return Double.POSITIVE_INFINITY;
+            sites[i] = site;
+            widths[i] = SMALL.width();
+        }
+        return evaluateLayoutObjective(sites, widths, targetDistance);
+    }
+
+    private static AssignmentScore bestLargeAssignment(int[] selected, List<Candidate> candidates, double targetDistance) {
         double best = Double.POSITIVE_INFINITY;
         int bestLarge = -1;
         for (int candidateIndex : selected) {
-            if (candidates.get(candidateIndex).usableLarge() == null) continue;
-            double objective = evaluateObjective(selected, candidateIndex, candidates, targetDistance);
+            Candidate largeCandidate = candidates.get(candidateIndex);
+            Site largeSite = largeCandidate.usableLarge();
+            if (largeSite == null) continue;
+            Site[] sites = new Site[selected.length];
+            int[] widths = new int[selected.length];
+            boolean valid = true;
+            for (int i = 0; i < selected.length; i++) {
+                boolean large = selected[i] == candidateIndex;
+                Site site = large ? largeSite : candidates.get(selected[i]).usableSmall();
+                if (site == null) {
+                    valid = false;
+                    break;
+                }
+                sites[i] = site;
+                widths[i] = large ? LARGE.width() : SMALL.width();
+            }
+            if (!valid) continue;
+            double objective = evaluateLayoutObjective(sites, widths, targetDistance);
             if (objective < best) {
                 best = objective;
                 bestLarge = candidateIndex;
@@ -590,24 +659,9 @@ final class AltarPlacementPlanner {
         return new AssignmentScore(best, bestLarge);
     }
 
-    private static double evaluateObjective(
-            int[] selected,
-            int largeCandidateIndex,
-            List<Candidate> candidates,
-            double targetDistance
-    ) {
+    private static double evaluateLayoutObjective(Site[] sites, int[] widths, double targetDistance) {
         double terrain = 0.0;
-        Site[] sites = new Site[selected.length];
-        int[] widths = new int[selected.length];
-        for (int i = 0; i < selected.length; i++) {
-            boolean large = selected[i] == largeCandidateIndex;
-            Candidate candidate = candidates.get(selected[i]);
-            Site site = large ? candidate.usableLarge() : candidate.usableSmall();
-            if (site == null) return Double.POSITIVE_INFINITY;
-            sites[i] = site;
-            widths[i] = large ? LARGE.width() : SMALL.width();
-            terrain += site.score();
-        }
+        for (Site site : sites) terrain += site.score();
         double targetScale = Math.max(1.0, targetDistance);
         double pairPenalty = 0.0;
         double minDistance = Double.POSITIVE_INFINITY;
@@ -955,7 +1009,6 @@ final class AltarPlacementPlanner {
 
     static final class PreparationSession {
         private final ServerLevel level;
-        private final CityRegion region;
         private final List<Request> requests;
         private final long seed;
         private final UUID cityId;
@@ -963,16 +1016,20 @@ final class AltarPlacementPlanner {
         private final boolean hasLarge;
         private final SearchBounds smallBounds;
         private final SearchBounds largeBounds;
+        private final ChunkGenerator generator;
+        private final RandomState randomState;
+        private final Map<Long, SurfaceSample> virtualSurfaceCache;
         private final List<Candidate> candidates;
         private final double targetDistance;
         private int optimizationRound;
         private int exactEvaluations;
+        private int pendingExactCandidateIndex = -1;
+        private ExactRole pendingExactRole;
         private SelectionResult selection;
         private List<Plan> completedPlans;
 
         private PreparationSession(
                 ServerLevel level,
-                CityRegion region,
                 List<Request> requests,
                 long seed,
                 UUID cityId,
@@ -980,11 +1037,13 @@ final class AltarPlacementPlanner {
                 boolean hasLarge,
                 SearchBounds smallBounds,
                 SearchBounds largeBounds,
+                ChunkGenerator generator,
+                RandomState randomState,
+                Map<Long, SurfaceSample> virtualSurfaceCache,
                 List<Candidate> candidates,
                 double targetDistance
         ) {
             this.level = level;
-            this.region = region;
             this.requests = requests;
             this.seed = seed;
             this.cityId = cityId;
@@ -992,6 +1051,9 @@ final class AltarPlacementPlanner {
             this.hasLarge = hasLarge;
             this.smallBounds = smallBounds;
             this.largeBounds = largeBounds;
+            this.generator = generator;
+            this.randomState = randomState;
+            this.virtualSurfaceCache = virtualSurfaceCache;
             this.candidates = candidates;
             this.targetDistance = targetDistance;
         }
@@ -1010,27 +1072,30 @@ final class AltarPlacementPlanner {
     private static final class Candidate {
         private final ChunkSeed chunk;
         private final Site virtualSmall;
-        private final Site virtualLarge;
-        private boolean exactEvaluated;
+        private Site virtualLarge;
+        private boolean smallExactEvaluated;
+        private boolean largeExactEvaluated;
         private Site exactSmall;
         private Site exactLarge;
         private String smallReject = "";
         private String largeReject = "";
 
-        private Candidate(ChunkSeed chunk, Site virtualSmall, Site virtualLarge) {
+        private Candidate(ChunkSeed chunk, Site virtualSmall) {
             this.chunk = chunk;
             this.virtualSmall = virtualSmall;
-            this.virtualLarge = virtualLarge;
         }
 
         private Site usableSmall() {
-            return exactEvaluated ? smallReject.isEmpty() ? exactSmall : null : virtualSmall;
+            return smallExactEvaluated ? smallReject.isEmpty() ? exactSmall : null : virtualSmall;
         }
 
         private Site usableLarge() {
-            return exactEvaluated ? largeReject.isEmpty() ? exactLarge : null : virtualLarge;
+            if (virtualLarge == null) return null;
+            return largeExactEvaluated ? largeReject.isEmpty() ? exactLarge : null : virtualLarge;
         }
     }
+
+    private enum ExactRole { SMALL, LARGE }
 
     @FunctionalInterface
     private interface SurfaceReader {
