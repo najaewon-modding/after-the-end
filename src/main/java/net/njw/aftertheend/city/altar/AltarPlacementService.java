@@ -1,5 +1,8 @@
 package net.njw.aftertheend.city.altar;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
@@ -7,19 +10,17 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityRegion;
-
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 
 public final class AltarPlacementService {
     private static final int MAX_TERRAIN_TRIM_DEPTH = 2;
@@ -53,18 +54,64 @@ public final class AltarPlacementService {
         return true;
     }
 
-    private static List<AltarPlacement> generate(MinecraftServer server, City city) {
+    static Preparation beginPreparation(MinecraftServer server, City city) {
+        if (AltarManager.isGenerated(server, city.id())) return null;
         ServerLevel level = server.getLevel(Level.OVERWORLD);
         CityRegion region = city.getRegion(Level.OVERWORLD).orElseThrow(
                 () -> new IllegalStateException("Altar generation requires an Overworld city region: " + city.id())
         );
         if (level == null) throw new IllegalStateException("Overworld is not available for Altar generation.");
-
         long seed = citySeed(level.getSeed(), city.id());
+        List<AltarSpec> specs = createSpecs(server, seed, city.id());
+        List<AltarPlacementPlanner.Request> requests = specs.stream()
+                .map(spec -> new AltarPlacementPlanner.Request(spec.index(), spec.large()))
+                .toList();
+        AltarPlacementPlanner.PreparationSession planner = AltarPlacementPlanner.beginPreparation(
+                level, region, requests, seed, city.id()
+        );
+        return new Preparation(city.id(), level, seed, specs, planner);
+    }
+
+    static AltarPlacementPlanner.PreparationStep advancePreparation(Preparation preparation) {
+        return AltarPlacementPlanner.advancePreparation(preparation.planner());
+    }
+
+    static List<ChunkPos> missingRequiredChunks(Preparation preparation, int candidateIndex) {
+        return AltarPlacementPlanner.missingRequiredChunks(preparation.planner(), candidateIndex);
+    }
+
+    static void exactEvaluateLoaded(Preparation preparation, int candidateIndex) {
+        AltarPlacementPlanner.exactEvaluateLoaded(preparation.planner(), candidateIndex);
+    }
+
+    static List<AltarPlacement> completePreparation(
+            MinecraftServer server,
+            City city,
+            Preparation preparation,
+            List<AltarPlacementPlanner.Plan> sitePlans
+    ) {
+        if (!city.id().equals(preparation.cityId())) throw new IllegalArgumentException("Preparation city does not match target city.");
+        if (AltarManager.isGenerated(server, city.id())) return AltarManager.getPlacements(server, city.id());
+        return placePlans(server, city, preparation.level(), preparation.seed(), preparation.specs(), sitePlans);
+    }
+
+    private static List<AltarPlacement> generate(MinecraftServer server, City city) {
+        Preparation preparation = beginPreparation(server, city);
+        if (preparation == null) return AltarManager.getPlacements(server, city.id());
+        while (true) {
+            AltarPlacementPlanner.PreparationStep step = advancePreparation(preparation);
+            if (step.complete()) return completePreparation(server, city, preparation, step.plans());
+            for (ChunkPos chunk : step.requiredChunks()) {
+                preparation.level().getChunk(chunk.x(), chunk.z(), ChunkStatus.FULL, true);
+            }
+            exactEvaluateLoaded(preparation, step.candidateIndex());
+        }
+    }
+
+    private static List<AltarSpec> createSpecs(MinecraftServer server, long seed, UUID cityId) {
         RandomSource random = RandomSource.create(seed);
         int count = rollAltarCount(random);
         int largeIndex = random.nextDouble() < count * 0.10 ? random.nextInt(count) : -1;
-
         List<AltarSpec> specs = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
             boolean large = index == largeIndex;
@@ -79,21 +126,29 @@ public final class AltarPlacementService {
             );
             specs.add(new AltarSpec(index, templateId, template, size, color.id(), large, ruined));
         }
+        return List.copyOf(specs);
+    }
 
-        List<AltarPlacementPlanner.Request> requests = specs.stream()
-                .map(spec -> new AltarPlacementPlanner.Request(spec.index(), spec.large()))
-                .toList();
-        List<AltarPlacementPlanner.Plan> sitePlans = AltarPlacementPlanner.plan(level, region, requests, seed, city.id());
-
+    private static List<AltarPlacement> placePlans(
+            MinecraftServer server,
+            City city,
+            ServerLevel level,
+            long seed,
+            List<AltarSpec> specs,
+            List<AltarPlacementPlanner.Plan> sitePlans
+    ) {
         List<PlannedAltar> plans = new ArrayList<>(sitePlans.size());
         for (AltarPlacementPlanner.Plan site : sitePlans) {
             AltarSpec spec = specs.get(site.specIndex());
             int half = spec.size().width() / 2;
-            int originY = Math.max(level.getMinY(), Math.min(level.getMaxY() - spec.size().height() + 1, site.targetSurfaceY() - 1));
-            PlacementCandidate candidate = new PlacementCandidate(
-                    site.centerX() - half, originY, site.centerZ() - half, originY + 1
+            int originY = Math.max(
+                    level.getMinY(),
+                    Math.min(level.getMaxY() - spec.size().height() + 1, site.targetSurfaceY() - 1)
             );
-            plans.add(new PlannedAltar(spec, candidate));
+            plans.add(new PlannedAltar(
+                    spec,
+                    new PlacementCandidate(site.centerX() - half, originY, site.centerZ() - half, originY + 1)
+            ));
         }
         plans.sort(Comparator.comparingInt(plan -> plan.spec().index()));
 
@@ -103,7 +158,6 @@ public final class AltarPlacementService {
             PlacementCandidate candidate = plan.candidate();
             clearTreesAndVegetation(level, candidate, spec.size());
             trimTerrain(level, candidate, spec.size());
-
             BlockPos origin = new BlockPos(candidate.originX(), candidate.originY(), candidate.originZ());
             boolean placed = spec.template().placeInWorld(
                     level,
@@ -113,9 +167,10 @@ public final class AltarPlacementService {
                     RandomSource.create(citySeed(seed ^ spec.index(), city.id() + "|" + spec.templateId())),
                     3
             );
-            if (!placed) throw new IllegalStateException("Failed to place Altar template " + spec.templateId() + " for city " + city.id());
+            if (!placed) throw new IllegalStateException(
+                    "Failed to place Altar template " + spec.templateId() + " for city " + city.id()
+            );
             restoreRuinedSocketSupports(level, origin, spec);
-
             placements.add(new AltarPlacement(
                     city.id(), spec.templateId().toString(), origin.getX(), origin.getY(), origin.getZ(),
                     spec.large(), spec.ruined(), spec.color()
@@ -151,7 +206,6 @@ public final class AltarPlacementService {
     private static SurfaceSample findSurfaceSample(ServerLevel level, int x, int z) {
         int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
         if (top < level.getMinY()) return null;
-
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos(x, top, z);
         while (cursor.getY() >= level.getMinY()) {
             BlockState state = level.getBlockState(cursor);
@@ -167,19 +221,15 @@ public final class AltarPlacementService {
         int minY = Math.max(level.getMinY(), candidate.originY() - 2);
         int maxY = Math.min(level.getMaxY(), candidate.originY() + size.height() + TREE_CLEAR_EXTRA_HEIGHT);
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-
         for (HorizontalOffset offset : geometry.treeClearOffsets()) {
             int x = candidate.originX() + offset.dx();
             int z = candidate.originZ() + offset.dz();
             for (int y = minY; y <= maxY; y++) {
                 cursor.set(x, y, z);
                 BlockState state = level.getBlockState(cursor);
-                if (state.is(BlockTags.LOGS) || state.is(BlockTags.LEAVES)) {
-                    level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
-                }
+                if (state.is(BlockTags.LOGS) || state.is(BlockTags.LEAVES)) level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
             }
         }
-
         int structureTop = Math.min(level.getMaxY(), candidate.originY() + size.height() - 1);
         for (int x = candidate.originX(); x < candidate.originX() + size.width(); x++) {
             for (int z = candidate.originZ(); z < candidate.originZ() + size.width(); z++) {
@@ -200,7 +250,6 @@ public final class AltarPlacementService {
             int worldZ = candidate.originZ() + offset.dz();
             SurfaceSample sample = findSurfaceSample(level, worldX, worldZ);
             if (sample == null || sample.surfaceY() <= candidate.targetSurfaceY()) continue;
-
             int trimDepth = Math.min(offset.maxTrim(), sample.surfaceY() - candidate.targetSurfaceY());
             for (int depth = 0; depth < trimDepth; depth++) {
                 int y = sample.surfaceY() - 1 - depth;
@@ -228,7 +277,6 @@ public final class AltarPlacementService {
                 if (x * x + z * z <= clearRadiusSquared) treeClearOffsets.add(new HorizontalOffset(dx, dz));
             }
         }
-
         List<TrimOffset> trimOffsets = new ArrayList<>();
         double center = (size.width() - 1) / 2.0;
         double coreRadius = size.width() / 2.0;
@@ -263,13 +311,41 @@ public final class AltarPlacementService {
         value *= 0xff51afd7ed558ccdL;
         value ^= value >>> 33;
         value *= 0xc4ceb9fe1a85ec53L;
-        return value ^ (value >>> 33);
+        return value ^ value >>> 33;
+    }
+
+    static final class Preparation {
+        private final UUID cityId;
+        private final ServerLevel level;
+        private final long seed;
+        private final List<AltarSpec> specs;
+        private final AltarPlacementPlanner.PreparationSession planner;
+
+        private Preparation(
+                UUID cityId,
+                ServerLevel level,
+                long seed,
+                List<AltarSpec> specs,
+                AltarPlacementPlanner.PreparationSession planner
+        ) {
+            this.cityId = cityId;
+            this.level = level;
+            this.seed = seed;
+            this.specs = specs;
+            this.planner = planner;
+        }
+
+        UUID cityId() { return cityId; }
+        ServerLevel level() { return level; }
+        long seed() { return seed; }
+        List<AltarSpec> specs() { return specs; }
+        AltarPlacementPlanner.PreparationSession planner() { return planner; }
     }
 
     private record ColorVariant(String id, String normalSuffix, String ruinedSuffix) { }
     private record TemplateSize(int width, int height) { }
     private record AltarSpec(int index, Identifier templateId, StructureTemplate template, TemplateSize size,
-                                String color, boolean large, boolean ruined) { }
+                             String color, boolean large, boolean ruined) { }
     private record SurfaceSample(int surfaceY) { }
     private record PlacementCandidate(int originX, int originY, int originZ, int targetSurfaceY) { }
     private record HorizontalOffset(int dx, int dz) { }

@@ -11,6 +11,7 @@ import net.njw.aftertheend.city.CityTeleportService;
 import net.njw.aftertheend.city.altar.AltarCommand;
 import net.njw.aftertheend.city.altar.AltarGenerationHandler;
 import net.njw.aftertheend.city.altar.AltarRitualHandler;
+import net.njw.aftertheend.city.altar.HiddenCityPreparationService;
 import net.njw.aftertheend.city.command.CityAdminCommand;
 import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 import net.njw.aftertheend.city.structure.EnderEyeHandler;
@@ -34,6 +35,7 @@ public final class AfterTheEnd {
         NeoForge.EVENT_BUS.register(StructureRequirementHandler.class);
         NeoForge.EVENT_BUS.register(EnderEyeHandler.class);
         NeoForge.EVENT_BUS.register(AltarGenerationHandler.class);
+        NeoForge.EVENT_BUS.register(HiddenCityPreparationService.class);
         NeoForge.EVENT_BUS.register(AltarRitualHandler.class);
         NeoForge.EVENT_BUS.register(AltarCommand.class);
         NeoForge.EVENT_BUS.register(CityPregenerationHandler.class);

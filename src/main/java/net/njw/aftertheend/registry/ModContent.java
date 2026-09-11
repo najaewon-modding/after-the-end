@@ -14,13 +14,17 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.block.ResonanceCrystalBlock;
 import net.njw.aftertheend.block.entity.ResonanceCrystalBlockEntity;
+import net.njw.aftertheend.item.ShulkerCoreItem;
 
 public final class ModContent {
     private static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(AfterTheEnd.MODID);
     private static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(AfterTheEnd.MODID);
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, AfterTheEnd.MODID);
 
-    public static final DeferredItem<Item> SHULKER_CORE = ITEMS.registerSimpleItem("shulker_core");
+    public static final DeferredItem<ShulkerCoreItem> SHULKER_CORE = ITEMS.registerItem(
+            "shulker_core",
+            ShulkerCoreItem::new
+    );
 
     public static final DeferredBlock<ResonanceCrystalBlock> RESONANCE_CRYSTAL = BLOCKS.registerBlock(
             "resonance_crystal",

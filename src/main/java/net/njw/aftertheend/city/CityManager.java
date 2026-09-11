@@ -1,15 +1,14 @@
 package net.njw.aftertheend.city;
 
+import java.util.Collection;
 import java.util.UUID;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
-
-import java.util.Collection;
+import net.njw.aftertheend.city.altar.AltarManager;
 
 public final class CityManager {
-    private CityManager() {
-    }
+    private CityManager() { }
 
     static CitySavedData getSavedData(MinecraftServer server) {
         return server.getDataStorage().computeIfAbsent(CitySavedData.TYPE);
@@ -25,7 +24,14 @@ public final class CityManager {
     public static Collection<City> getAccessibleCities(MinecraftServer server) { return getSavedData(server).getAccessibleCities(); }
     public static Collection<City> getLockedCities(MinecraftServer server) { return getSavedData(server).getLockedCities(); }
     public static int getLockedCityCount(MinecraftServer server) { return getSavedData(server).getLockedCityCount(); }
-    public static City getNextLockedCity(MinecraftServer server) { return getSavedData(server).getNextLockedCity(); }
+
+    public static City getNextLockedCity(MinecraftServer server) {
+        for (City city : getSavedData(server).getLockedCities()) {
+            if (AltarManager.isGenerated(server, city.id())) return city;
+        }
+        return null;
+    }
+
     public static City getCity(MinecraftServer server, UUID cityId) { return getSavedData(server).getCity(cityId); }
     public static void addCity(MinecraftServer server, City city) { getSavedData(server).addCity(city); }
     public static void addAccessibleCity(MinecraftServer server, City city) { getSavedData(server).addAccessibleCity(city); }

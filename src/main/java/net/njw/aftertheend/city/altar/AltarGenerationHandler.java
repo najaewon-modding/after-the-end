@@ -19,11 +19,13 @@ public final class AltarGenerationHandler {
         for (City city : CityManager.getAccessibleCities(server)) {
             if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedAltars++;
         }
+        HiddenCityPreparationService.refreshQueue(server);
         if (createdCities > 0) {
             AfterTheEnd.LOGGER.info("Prepared {} locked city metadata reserve entries during server startup.", createdCities);
         }
         if (generatedAltars > 0) {
             AfterTheEnd.LOGGER.info("Generated missing Altars for {} accessible city/cities during server startup.", generatedAltars);
         }
+        AfterTheEnd.LOGGER.info("Hidden city reserve preparation queued; locked cities become READY without blocking unlock rituals.");
     }
 }
