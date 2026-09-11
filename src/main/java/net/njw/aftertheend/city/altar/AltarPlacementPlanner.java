@@ -77,11 +77,13 @@ final class AltarPlacementPlanner {
         List<Candidate> candidates = new ArrayList<>(sampledChunks.size());
         long started = System.nanoTime();
         for (ChunkSeed chunk : sampledChunks) {
+            long candidateStarted = System.nanoTime();
             Site virtualSmall = evaluateVirtualSite(level, generator, randomState, virtualSurfaceCache, chunk, SMALL, smallBounds);
             candidates.add(new Candidate(chunk, virtualSmall));
             AfterTheEnd.LOGGER.info(
-                    "[{}/{}] chunk=({}, {}) small={} city={}",
-                    chunk.sampleIndex() + 1, sampledChunks.size(), chunk.chunkX(), chunk.chunkZ(), format(virtualSmall.score()), cityId
+                    "[{}/{}] {}sec chunk=({}, {}) small={} city={}",
+                    chunk.sampleIndex() + 1, sampledChunks.size(), formatSeconds(elapsedSeconds(candidateStarted)),
+                    chunk.chunkX(), chunk.chunkZ(), format(virtualSmall.score()), cityId
             );
         }
         double targetDistance = preferredDistance(region, count);
@@ -140,14 +142,15 @@ final class AltarPlacementPlanner {
                     int candidateIndex = selection.selected()[position];
                     Candidate candidate = session.candidates.get(candidateIndex);
                     if (candidate.virtualLarge != null) continue;
+                    long candidateStarted = System.nanoTime();
                     candidate.virtualLarge = evaluateVirtualSite(
                             session.level, session.generator, session.randomState, session.virtualSurfaceCache,
                             candidate.chunk, LARGE, session.largeBounds
                     );
                     AfterTheEnd.LOGGER.info(
-                            "[{}/{}] chunk=({}, {}) large={} city={}",
-                            position + 1, selection.selected().length, candidate.chunk.chunkX(), candidate.chunk.chunkZ(),
-                            format(candidate.virtualLarge.score()), session.cityId
+                            "[{}/{}] {}sec chunk=({}, {}) large={} city={}",
+                            position + 1, selection.selected().length, formatSeconds(elapsedSeconds(candidateStarted)),
+                            candidate.chunk.chunkX(), candidate.chunk.chunkZ(), format(candidate.virtualLarge.score()), session.cityId
                     );
                 }
 
