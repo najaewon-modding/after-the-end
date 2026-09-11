@@ -40,14 +40,17 @@ public final class ResonanceCrystalRenderer implements BlockEntityRenderer<Reson
         innerModel = new EndCrystalModel(context.bakeLayer(ModelLayers.END_CRYSTAL));
         coreModel = new EndCrystalModel(context.bakeLayer(ModelLayers.END_CRYSTAL));
 
-        baseModel.outerGlass.visible = false;
+        baseModel.outerGlass.skipDraw = true;
+        baseModel.innerGlass.skipDraw = true;
+        baseModel.cube.skipDraw = true;
 
         outerModel.base.visible = false;
-        outerModel.innerGlass.visible = false;
+        outerModel.innerGlass.skipDraw = true;
+        outerModel.cube.skipDraw = true;
 
         innerModel.base.visible = false;
         innerModel.outerGlass.skipDraw = true;
-        innerModel.cube.visible = false;
+        innerModel.cube.skipDraw = true;
 
         coreModel.base.visible = false;
         coreModel.outerGlass.skipDraw = true;
@@ -82,12 +85,14 @@ public final class ResonanceCrystalRenderer implements BlockEntityRenderer<Reson
 
         poseStack.pushPose();
         poseStack.translate(0.5F, 0.0F, 0.5F);
-        poseStack.scale(state.horizontalScale, state.verticalScale, state.horizontalScale);
-
         submitLayer(baseModel, crystalState, poseStack, collector, state.lightCoords, BASE_PURPLE, state);
+
+        poseStack.pushPose();
+        poseStack.scale(state.horizontalScale, state.verticalScale, state.horizontalScale);
         submitLayer(outerModel, crystalState, poseStack, collector, state.lightCoords, OUTER_PURPLE, state);
         submitLayer(innerModel, crystalState, poseStack, collector, FULL_BRIGHT, INNER_LILAC, state);
         submitLayer(coreModel, crystalState, poseStack, collector, FULL_BRIGHT, CORE_WHITE, state);
+        poseStack.popPose();
 
         poseStack.popPose();
     }

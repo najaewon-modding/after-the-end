@@ -10,9 +10,15 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.njw.aftertheend.AfterTheEnd;
@@ -25,9 +31,13 @@ import net.njw.aftertheend.registry.ModContent;
 public final class AltarRitualHandler {
     public static final int MAX_ACTIVATED_ALTARS_PER_CITY = 3;
     private static final int SCAN_INTERVAL_TICKS = 5;
-    private static final int COMMIT_TICK = 80;
-    private static final int END_TICK = 100;
+    private static final int RISE_DURATION_TICKS = 60;
+    private static final int BEAM_DURATION_TICKS = 100;
+    private static final int END_TICK = RISE_DURATION_TICKS + BEAM_DURATION_TICKS;
+    private static final int SOUND_INTERVAL_TICKS = 20;
+    private static final double EGG_RISE_HEIGHT = 10.0;
     private static final int FLASH_COLOR = 0xE2DEE5;
+    private static final int SOCKET_COLOR = 0xC8B7D4;
     private static final Identifier RECORDED_DRAGON_EGG_ID = Identifier.fromNamespaceAndPath("njw_just_dragon_eggs", "recorded_dragon_egg");
     private static RitualSequence activeSequence;
 
@@ -49,8 +59,32 @@ public final class AltarRitualHandler {
     }
 
     @SubscribeEvent
-    public static void onServerStopped(ServerStoppedEvent event) {
+    public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) return;
+        if (!level.dimension().equals(Level.OVERWORLD)) return;
+        if (!event.getPlacedBlock().is(ModContent.RESONANCE_CRYSTAL.get())) return;
+        RitualGeometry geometry = findSocketGeometry(level.getServer(), event.getPos(), true);
+        if (geometry == null) return;
+
+        int occupied = 0;
+        for (BlockPos socket : geometry.sockets()) if (level.getBlockState(socket).is(ModContent.RESONANCE_CRYSTAL.get())) occupied++;
+        float pitch = 0.78F + Math.min(occupied, 4) * 0.08F;
+        level.playSound(null, event.getPos(), SoundEvents.AMETHYST_BLOCK_RESONATE, SoundSource.BLOCKS, 1.0F, pitch);
+        level.sendParticles(new DustParticleOptions(SOCKET_COLOR, 0.9F), event.getPos().getX() + 0.5, event.getPos().getY() + 0.6,
+                event.getPos().getZ() + 0.5, 10, 0.25, 0.35, 0.25, 0.02);
+    }
+
+    @SubscribeEvent
+    public static void onServerStopping(ServerStoppingEvent event) {
+        if (activeSequence == null) return;
+        ServerLevel level = event.getServer().getLevel(Level.OVERWORLD);
+        if (level != null) restoreEgg(level, activeSequence);
         activeSequence = null;
+    }
+
+    public static boolean isResonanceSocket(ServerLevel level, BlockPos pos) {
+        if (!level.dimension().equals(Level.OVERWORLD)) return false;
+        return findSocketGeometry(level.getServer(), pos, false) != null;
     }
 
     private static void tryStartRitual(MinecraftServer server, ServerLevel level) {
@@ -63,17 +97,16 @@ public final class AltarRitualHandler {
             for (AltarPlacement placement : AltarManager.getPlacements(server, city.id())) {
                 if (placement.activated()) continue;
                 RitualGeometry geometry = geometry(placement);
-                if (!isPatternLoaded(level, geometry) || !hasRitualPattern(level, geometry)) continue;
+                if (!hasRitualPattern(level, geometry)) continue;
+
+                BlockState eggState = level.getBlockState(geometry.center());
+                FallingBlockEntity floatingEgg = FallingBlockEntity.fall(level, geometry.center(), eggState);
+                floatingEgg.setNoGravity(true);
+                floatingEgg.setDeltaMovement(0.0, EGG_RISE_HEIGHT / RISE_DURATION_TICKS, 0.0);
 
                 activeSequence = new RitualSequence(
-                        city.id(),
-                        targetCity.id(),
-                        placement.blockX(),
-                        placement.y(),
-                        placement.blockZ(),
-                        placement.large(),
-                        geometry,
-                        level.getGameTime()
+                        city.id(), targetCity.id(), placement.blockX(), placement.y(), placement.blockZ(), placement.large(),
+                        geometry, level.getGameTime(), eggState, floatingEgg
                 );
                 level.playSound(null, geometry.center(), SoundEvents.END_PORTAL_FRAME_FILL, SoundSource.BLOCKS, 1.0F, 0.65F);
                 level.sendParticles(ParticleTypes.PORTAL, geometry.center().getX() + 0.5, geometry.center().getY() + 0.8,
@@ -88,37 +121,56 @@ public final class AltarRitualHandler {
 
     private static void tickSequence(MinecraftServer server, ServerLevel level, RitualSequence sequence) {
         long elapsed = level.getGameTime() - sequence.startGameTime;
-        if (elapsed < COMMIT_TICK && !hasRitualPattern(level, sequence.geometry)) {
-            cancel(level, sequence, "ritual components changed before activation");
+        if (!isPatternLoaded(level, sequence.geometry) || !hasCrystalPattern(level, sequence.geometry)) {
+            cancel(level, sequence, "ritual crystals changed before activation");
+            return;
+        }
+        if (sequence.floatingEgg.isRemoved()) {
+            cancel(level, sequence, "floating Dragon Egg disappeared before activation");
             return;
         }
 
-        if (!sequence.committed && elapsed >= COMMIT_TICK) {
-            if (!commit(server, level, sequence)) return;
+        if (elapsed < RISE_DURATION_TICKS) {
+            sequence.floatingEgg.setNoGravity(true);
+            sequence.floatingEgg.setDeltaMovement(0.0, EGG_RISE_HEIGHT / RISE_DURATION_TICKS, 0.0);
+            if (elapsed > 0 && elapsed % SOUND_INTERVAL_TICKS == 0) {
+                float pitch = 0.82F + 0.16F * (elapsed / (float) RISE_DURATION_TICKS);
+                level.playSound(null, sequence.geometry.center(), SoundEvents.AMETHYST_BLOCK_RESONATE, SoundSource.BLOCKS, 0.75F, pitch);
+            }
+        } else {
+            BlockPos center = sequence.geometry.center();
+            sequence.floatingEgg.setNoGravity(true);
+            sequence.floatingEgg.setDeltaMovement(0.0, 0.0, 0.0);
+            sequence.floatingEgg.setPos(center.getX() + 0.5, center.getY() + EGG_RISE_HEIGHT, center.getZ() + 0.5);
+            if (elapsed == RISE_DURATION_TICKS) {
+                level.playSound(null, center, SoundEvents.END_PORTAL_FRAME_FILL, SoundSource.BLOCKS, 1.2F, 1.15F);
+                level.sendParticles(ParticleTypes.END_ROD, center.getX() + 0.5, center.getY() + EGG_RISE_HEIGHT + 0.5,
+                        center.getZ() + 0.5, 36, 0.6, 0.6, 0.6, 0.03);
+            } else if (elapsed % SOUND_INTERVAL_TICKS == 0) {
+                level.playSound(null, center, SoundEvents.AMETHYST_BLOCK_RESONATE, SoundSource.BLOCKS, 0.7F, 0.72F);
+            }
         }
 
-        if (elapsed >= END_TICK) {
-            activeSequence = null;
-        }
+        if (elapsed >= END_TICK) complete(server, level, sequence);
     }
 
-    private static boolean commit(MinecraftServer server, ServerLevel level, RitualSequence sequence) {
+    private static void complete(MinecraftServer server, ServerLevel level, RitualSequence sequence) {
         City nextLocked = CityManager.getNextLockedCity(server);
         if (nextLocked == null || !nextLocked.id().equals(sequence.targetCityId)) {
             cancel(level, sequence, "next locked city changed");
-            return false;
+            return;
         }
-        if (!hasRitualPattern(level, sequence.geometry)) {
-            cancel(level, sequence, "ritual components are incomplete");
-            return false;
+        if (!hasCrystalPattern(level, sequence.geometry)) {
+            cancel(level, sequence, "ritual crystals are incomplete");
+            return;
         }
         if (AltarManager.getActivatedCount(server, sequence.cityId) >= MAX_ACTIVATED_ALTARS_PER_CITY) {
             cancel(level, sequence, "city already has the maximum number of activated Altars");
-            return false;
+            return;
         }
         if (!AltarManager.setActivated(server, sequence.cityId, sequence.originX, sequence.originY, sequence.originZ, true)) {
             cancel(level, sequence, "Altar placement no longer exists");
-            return false;
+            return;
         }
 
         try {
@@ -127,35 +179,58 @@ public final class AltarRitualHandler {
             AltarManager.setActivated(server, sequence.cityId, sequence.originX, sequence.originY, sequence.originZ, false);
             cancel(level, sequence, "city unlock failed: " + exception.getMessage());
             AfterTheEnd.LOGGER.error("Altar ritual failed while unlocking city {}", sequence.targetCityId, exception);
-            return false;
+            return;
         }
 
-        level.removeBlock(sequence.geometry.center(), false);
-        BlockPos center = sequence.geometry.center();
-        level.sendParticles(new DustParticleOptions(FLASH_COLOR, 1.6F), center.getX() + 0.5, center.getY() + 1.0, center.getZ() + 0.5,
-                120, 4.0, 2.5, 4.0, 0.08);
-        level.sendParticles(ParticleTypes.END_ROD, center.getX() + 0.5, center.getY() + 1.0, center.getZ() + 0.5,
-                64, 3.5, 2.0, 3.5, 0.07);
-        level.playSound(null, center, SoundEvents.END_PORTAL_SPAWN, SoundSource.BLOCKS, 1.8F, 1.0F);
-        sequence.committed = true;
+        Vec3 eggPosition = sequence.floatingEgg.position();
+        sequence.floatingEgg.discard();
+        ItemStack eggStack = new ItemStack(sequence.eggState.getBlock());
+        if (!eggStack.isEmpty()) level.addFreshEntity(new ItemEntity(level, eggPosition.x, eggPosition.y, eggPosition.z, eggStack));
+        for (BlockPos socket : sequence.geometry.sockets()) level.removeBlock(socket, false);
+
+        level.sendParticles(new DustParticleOptions(FLASH_COLOR, 1.6F), eggPosition.x, eggPosition.y + 0.5, eggPosition.z,
+                120, 3.0, 2.0, 3.0, 0.08);
+        level.sendParticles(ParticleTypes.END_ROD, eggPosition.x, eggPosition.y + 0.5, eggPosition.z,
+                64, 2.5, 1.5, 2.5, 0.07);
+        level.playSound(null, sequence.geometry.center(), SoundEvents.END_PORTAL_SPAWN, SoundSource.BLOCKS, 1.8F, 1.0F);
+        broadcastEffect(level, sequence, true);
+        activeSequence = null;
         AfterTheEnd.LOGGER.info("Activated Altar and unlocked city {} from city {}.", sequence.targetCityId, sequence.cityId);
-        return true;
     }
 
     private static void cancel(ServerLevel level, RitualSequence sequence, String reason) {
+        restoreEgg(level, sequence);
         broadcastEffect(level, sequence, true);
         AfterTheEnd.LOGGER.info("Cancelled Altar activation ritual at {}: {}", sequence.geometry.center(), reason);
         activeSequence = null;
     }
 
+    private static void restoreEgg(ServerLevel level, RitualSequence sequence) {
+        Vec3 dropPosition = sequence.floatingEgg.position();
+        sequence.floatingEgg.discard();
+        if (level.getBlockState(sequence.geometry.center()).isAir()) {
+            level.setBlock(sequence.geometry.center(), sequence.eggState, 3);
+            return;
+        }
+        ItemStack eggStack = new ItemStack(sequence.eggState.getBlock());
+        if (!eggStack.isEmpty()) level.addFreshEntity(new ItemEntity(level, dropPosition.x, dropPosition.y, dropPosition.z, eggStack));
+    }
+
     private static void broadcastEffect(ServerLevel level, RitualSequence sequence, boolean cancelled) {
         PacketDistributor.sendToAllPlayers(new AltarActivationPayload(
-                level.dimension().identifier(),
-                sequence.geometry.center(),
-                sequence.large,
-                sequence.startGameTime,
-                cancelled
+                level.dimension().identifier(), sequence.geometry.center(), sequence.large, sequence.startGameTime, cancelled
         ));
+    }
+
+    private static RitualGeometry findSocketGeometry(MinecraftServer server, BlockPos pos, boolean inactiveOnly) {
+        for (City city : CityManager.getAccessibleCities(server)) {
+            for (AltarPlacement placement : AltarManager.getPlacements(server, city.id())) {
+                if (inactiveOnly && placement.activated()) continue;
+                RitualGeometry geometry = geometry(placement);
+                for (BlockPos socket : geometry.sockets()) if (socket.equals(pos)) return geometry;
+            }
+        }
+        return null;
     }
 
     private static RitualGeometry geometry(AltarPlacement placement) {
@@ -182,7 +257,10 @@ public final class AltarRitualHandler {
     private static boolean hasRitualPattern(ServerLevel level, RitualGeometry geometry) {
         if (!isPatternLoaded(level, geometry)) return false;
         Identifier centerBlockId = BuiltInRegistries.BLOCK.getKey(level.getBlockState(geometry.center()).getBlock());
-        if (!RECORDED_DRAGON_EGG_ID.equals(centerBlockId)) return false;
+        return RECORDED_DRAGON_EGG_ID.equals(centerBlockId) && hasCrystalPattern(level, geometry);
+    }
+
+    private static boolean hasCrystalPattern(ServerLevel level, RitualGeometry geometry) {
         for (BlockPos socket : geometry.sockets()) {
             if (!level.getBlockState(socket).is(ModContent.RESONANCE_CRYSTAL.get())) return false;
         }
@@ -200,10 +278,11 @@ public final class AltarRitualHandler {
         private final boolean large;
         private final RitualGeometry geometry;
         private final long startGameTime;
-        private boolean committed;
+        private final BlockState eggState;
+        private final FallingBlockEntity floatingEgg;
 
-        private RitualSequence(UUID cityId, UUID targetCityId, int originX, int originY, int originZ,
-                               boolean large, RitualGeometry geometry, long startGameTime) {
+        private RitualSequence(UUID cityId, UUID targetCityId, int originX, int originY, int originZ, boolean large,
+                               RitualGeometry geometry, long startGameTime, BlockState eggState, FallingBlockEntity floatingEgg) {
             this.cityId = cityId;
             this.targetCityId = targetCityId;
             this.originX = originX;
@@ -212,6 +291,8 @@ public final class AltarRitualHandler {
             this.large = large;
             this.geometry = geometry;
             this.startGameTime = startGameTime;
+            this.eggState = eggState;
+            this.floatingEgg = floatingEgg;
         }
     }
 }

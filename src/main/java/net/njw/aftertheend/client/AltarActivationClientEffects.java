@@ -19,11 +19,9 @@ import net.njw.aftertheend.network.AltarActivationPayload;
 
 @EventBusSubscriber(modid = AfterTheEnd.MODID, value = Dist.CLIENT)
 public final class AltarActivationClientEffects {
-    public static final int EFFECT_DURATION_TICKS = 100;
-    private static final int CONVERGENCE_START_TICK = 12;
-    private static final int ASCENT_START_TICK = 40;
-    private static final int ASCENT_END_TICK = 96;
-    private static final float SKY_BEAM_HEIGHT = 160.0F;
+    public static final int EFFECT_DURATION_TICKS = 160;
+    private static final int BEAM_START_TICK = 60;
+    private static final double EGG_RISE_HEIGHT = 10.0;
     private static final Map<EffectKey, Effect> EFFECTS = new LinkedHashMap<>();
 
     private AltarActivationClientEffects() { }
@@ -54,7 +52,7 @@ public final class AltarActivationClientEffects {
         for (Effect effect : EFFECTS.values()) {
             if (!effect.dimension().equals(currentDimension)) continue;
             float elapsed = gameTime - effect.startGameTime();
-            if (elapsed < 0.0F || elapsed > EFFECT_DURATION_TICKS) continue;
+            if (elapsed < BEAM_START_TICK || elapsed > EFFECT_DURATION_TICKS) continue;
             renderEffect(effect, elapsed, poseStack, collector, camera);
         }
     }
@@ -62,23 +60,14 @@ public final class AltarActivationClientEffects {
     private static void renderEffect(Effect effect, float elapsed, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
         int radius = effect.large() ? 7 : 3;
         BlockPos center = effect.center();
-        Vec3 egg = new Vec3(center.getX() + 0.5, center.getY(), center.getZ() + 0.5);
+        Vec3 egg = new Vec3(center.getX() + 0.5, center.getY() + EGG_RISE_HEIGHT + 0.5, center.getZ() + 0.5);
         Vec3[] crystals = {
-                new Vec3(center.getX() + 0.5, center.getY(), center.getZ() - radius + 0.5),
-                new Vec3(center.getX() + radius + 0.5, center.getY(), center.getZ() + 0.5),
-                new Vec3(center.getX() + 0.5, center.getY(), center.getZ() + radius + 0.5),
-                new Vec3(center.getX() - radius + 0.5, center.getY(), center.getZ() + 0.5)
+                new Vec3(center.getX() + 0.5, center.getY() + 0.5, center.getZ() - radius + 0.5),
+                new Vec3(center.getX() + radius + 0.5, center.getY() + 0.5, center.getZ() + 0.5),
+                new Vec3(center.getX() + 0.5, center.getY() + 0.5, center.getZ() + radius + 0.5),
+                new Vec3(center.getX() - radius + 0.5, center.getY() + 0.5, center.getZ() + 0.5)
         };
-
-        if (elapsed >= CONVERGENCE_START_TICK && elapsed < ASCENT_START_TICK) {
-            for (Vec3 crystal : crystals) renderBeam(crystal, egg, elapsed, poseStack, collector, camera);
-            return;
-        }
-
-        if (elapsed >= ASCENT_START_TICK && elapsed < ASCENT_END_TICK) {
-            for (Vec3 crystal : crystals) renderBeam(crystal, crystal.add(0.0, SKY_BEAM_HEIGHT, 0.0), elapsed, poseStack, collector, camera);
-            renderBeam(egg, egg.add(0.0, SKY_BEAM_HEIGHT, 0.0), elapsed, poseStack, collector, camera);
-        }
+        for (Vec3 crystal : crystals) renderBeam(crystal, egg, elapsed, poseStack, collector, camera);
     }
 
     private static void renderBeam(Vec3 source, Vec3 target, float time, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
