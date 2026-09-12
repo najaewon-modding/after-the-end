@@ -1,8 +1,8 @@
 package net.njw.aftertheend.city.command;
 
-import java.util.UUID;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import java.util.UUID;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -10,6 +10,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityLifecycleService;
 import net.njw.aftertheend.city.CityManager;
@@ -19,8 +20,7 @@ import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 public final class CityAdminCommand {
     private static final int BLOCKS_PER_CHUNK = 16;
 
-    private CityAdminCommand() {
-    }
+    private CityAdminCommand() { }
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -52,69 +52,69 @@ public final class CityAdminCommand {
 
     private static int createCity(CommandSourceStack source, boolean accessible) {
         try {
-            City city = accessible ? CityLifecycleService.createAccessibleCity(source.getServer()) : CityLifecycleService.createLockedCity(source.getServer());
-            source.sendSuccess(() -> Component.literal((accessible ? "Created accessible city: " : "Created locked city: ") + city.id()), false);
+            City city = accessible
+                    ? CityLifecycleService.createAccessibleCity(source.getServer())
+                    : CityLifecycleService.createLockedCity(source.getServer());
+            String key = accessible
+                    ? "command.njw_after_the_end.city.created_accessible"
+                    : "command.njw_after_the_end.city.created_locked";
+            source.sendSuccess(() -> Component.translatable(key, city.id().toString()), false);
             sendCityCoordinates(source, city);
             return 1;
         } catch (RuntimeException exception) {
-            source.sendFailure(Component.literal("Failed to create city: " + exception.getMessage()));
+            AfterTheEnd.LOGGER.warn("Failed to create city from admin command.", exception);
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.failed_create"));
             return 0;
         }
     }
 
     private static int unlockCity(CommandSourceStack source, String cityId) {
-        UUID id;
-        try { id = UUID.fromString(cityId); } catch (IllegalArgumentException exception) {
-            source.sendFailure(Component.literal("Invalid city UUID: " + cityId));
-            return 0;
-        }
+        UUID id = parseCityId(source, cityId);
+        if (id == null) return 0;
         try {
             CityLifecycleService.unlockCity(source.getServer(), id);
-            source.sendSuccess(() -> Component.literal("Unlocked city: " + cityId), false);
+            source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.unlocked", cityId), false);
             return 1;
         } catch (RuntimeException exception) {
-            source.sendFailure(Component.literal(exception.getMessage()));
+            AfterTheEnd.LOGGER.warn("Failed to unlock city {} from admin command.", cityId, exception);
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.failed_unlock", cityId));
             return 0;
         }
     }
 
     private static int deleteCity(CommandSourceStack source, String cityId) {
-        UUID id;
-        try { id = UUID.fromString(cityId); } catch (IllegalArgumentException exception) {
-            source.sendFailure(Component.literal("Invalid city UUID: " + cityId));
-            return 0;
-        }
+        UUID id = parseCityId(source, cityId);
+        if (id == null) return 0;
         try {
             CityLifecycleService.deleteCity(source.getServer(), id);
-            source.sendSuccess(() -> Component.literal("Deleted city: " + cityId), false);
+            source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.deleted", cityId), false);
             return 1;
         } catch (RuntimeException exception) {
-            source.sendFailure(Component.literal(exception.getMessage()));
+            AfterTheEnd.LOGGER.warn("Failed to delete city {} from admin command.", cityId, exception);
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.failed_delete", cityId));
             return 0;
         }
     }
 
     private static int loadCity(CommandSourceStack source, String cityId) {
-        UUID id;
-        try { id = UUID.fromString(cityId); } catch (IllegalArgumentException exception) {
-            source.sendFailure(Component.literal("Invalid city UUID: " + cityId));
-            return 0;
-        }
+        UUID id = parseCityId(source, cityId);
+        if (id == null) return 0;
         City city = CityManager.getCity(source.getServer(), id);
         if (city == null) {
-            source.sendFailure(Component.literal("Unknown city: " + cityId));
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.unknown", cityId));
             return 0;
         }
         try {
             int taskCount = CityPregenerationHandler.startCityLoad(source.getServer(), city);
             if (taskCount == 0) {
-                source.sendSuccess(() -> Component.literal("City chunks are already loaded: " + cityId), false);
+                source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.chunks_already_loaded", cityId), false);
                 return 1;
             }
-            source.sendSuccess(() -> Component.literal("Started city chunk loading: " + cityId + ". All players will be disconnected until loading finishes."), true);
+            source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.chunk_loading_started", cityId), true);
             return 1;
         } catch (RuntimeException exception) {
-            source.sendFailure(Component.literal(exception.getMessage()));
+            AfterTheEnd.LOGGER.warn("Failed to load city chunks for {} from admin command.", cityId, exception);
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.failed_load", cityId));
             return 0;
         }
     }
@@ -124,56 +124,77 @@ public final class CityAdminCommand {
         var cities = CityManager.getCities(server);
         int unlockedCount = CityManager.getAccessibleCities(server).size();
         int lockedCount = CityManager.getLockedCityCount(server);
-        source.sendSuccess(() -> Component.literal("Cities: " + cities.size() + " (unlocked " + unlockedCount + "/" + CityManager.getMaxCityCount(server) + ", locked reserve " + lockedCount + "/" + CityLifecycleService.LOCKED_CITY_RESERVE_COUNT + ")"), false);
+        source.sendSuccess(() -> Component.translatable(
+                "command.njw_after_the_end.city.summary",
+                cities.size(), unlockedCount, CityManager.getMaxCityCount(server),
+                lockedCount, CityLifecycleService.LOCKED_CITY_RESERVE_COUNT
+        ), false);
         for (City city : cities) {
-            boolean accessible = CityManager.isCityAccessible(server, city.id());
-            source.sendSuccess(() -> Component.literal("- " + city.id() + " (" + (accessible ? "accessible" : "locked") + ")"), false);
+            Component state = Component.translatable(CityManager.isCityAccessible(server, city.id())
+                    ? "command.njw_after_the_end.city.state.accessible"
+                    : "command.njw_after_the_end.city.state.locked");
+            source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.list_entry", city.id().toString(), state), false);
         }
         return cities.size();
     }
 
     private static int showCityInfo(CommandSourceStack source, String cityId) {
-        UUID id;
-        try { id = UUID.fromString(cityId); } catch (IllegalArgumentException exception) {
-            source.sendFailure(Component.literal("Invalid city UUID: " + cityId));
-            return 0;
-        }
+        UUID id = parseCityId(source, cityId);
+        if (id == null) return 0;
         City city = CityManager.getCity(source.getServer(), id);
         if (city == null) {
-            source.sendFailure(Component.literal("Unknown city: " + cityId));
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.unknown", cityId));
             return 0;
         }
-        source.sendSuccess(() -> Component.literal(city.id() + " / " + city.name() + " / " + (CityManager.isCityAccessible(source.getServer(), city.id()) ? "accessible" : "locked")), false);
+        Component state = Component.translatable(CityManager.isCityAccessible(source.getServer(), city.id())
+                ? "command.njw_after_the_end.city.state.accessible"
+                : "command.njw_after_the_end.city.state.locked");
+        source.sendSuccess(() -> Component.translatable(
+                "command.njw_after_the_end.city.info", city.id().toString(), city.name(), state
+        ), false);
         sendCityCoordinates(source, city);
         return 1;
     }
 
     private static int showMaxCityCount(CommandSourceStack source) {
         int maximum = CityManager.getMaxCityCount(source.getServer());
-        source.sendSuccess(() -> Component.literal("Maximum unlocked city count: " + maximum), false);
+        source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.max", maximum), false);
         return maximum;
     }
 
     private static int setMaxCityCount(CommandSourceStack source, int count) {
         try {
             CityLifecycleService.setMaxCityCount(source.getServer(), count);
-            source.sendSuccess(() -> Component.literal("Maximum unlocked city count set to " + count), false);
+            source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.max_set", count), false);
             return count;
         } catch (RuntimeException exception) {
-            source.sendFailure(Component.literal(exception.getMessage()));
+            AfterTheEnd.LOGGER.warn("Failed to set maximum city count to {} from admin command.", count, exception);
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.failed_set_max", count));
             return 0;
         }
     }
 
-    private static void sendCityCoordinates(CommandSourceStack source, City city) {
-        sendRegionCoordinates(source, "Overworld", city.getRegion(Level.OVERWORLD).orElse(null));
-        sendRegionCoordinates(source, "Nether", city.getRegion(Level.NETHER).orElse(null));
+    private static UUID parseCityId(CommandSourceStack source, String cityId) {
+        try {
+            return UUID.fromString(cityId);
+        } catch (IllegalArgumentException exception) {
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.invalid_uuid", cityId));
+            return null;
+        }
     }
 
-    private static void sendRegionCoordinates(CommandSourceStack source, String dimensionName, CityRegion region) {
+    private static void sendCityCoordinates(CommandSourceStack source, City city) {
+        sendRegionCoordinates(source, Component.translatable("command.njw_after_the_end.city.dimension.overworld"), city.getRegion(Level.OVERWORLD).orElse(null));
+        sendRegionCoordinates(source, Component.translatable("command.njw_after_the_end.city.dimension.nether"), city.getRegion(Level.NETHER).orElse(null));
+    }
+
+    private static void sendRegionCoordinates(CommandSourceStack source, Component dimensionName, CityRegion region) {
         if (region == null) return;
         long centerBlockX = (long) region.centerChunkX() * BLOCKS_PER_CHUNK;
         long centerBlockZ = (long) region.centerChunkZ() * BLOCKS_PER_CHUNK;
-        source.sendSuccess(() -> Component.literal("  " + dimensionName + ": center chunk=(" + region.centerChunkX() + ", " + region.centerChunkZ() + "), block=(" + centerBlockX + ", " + centerBlockZ + ")"), false);
+        source.sendSuccess(() -> Component.translatable(
+                "command.njw_after_the_end.city.coordinates",
+                dimensionName, region.centerChunkX(), region.centerChunkZ(), centerBlockX, centerBlockZ
+        ), false);
     }
 }
