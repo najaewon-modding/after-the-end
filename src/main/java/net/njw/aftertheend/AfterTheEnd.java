@@ -17,6 +17,7 @@ import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 import net.njw.aftertheend.city.structure.EnderEyeHandler;
 import net.njw.aftertheend.city.structure.StructureRequirementHandler;
 import net.njw.aftertheend.event.ShulkerCoreDropHandler;
+import net.njw.aftertheend.gametest.ModGameTests;
 import net.njw.aftertheend.network.CityNetworkHandler;
 import net.njw.aftertheend.network.CitySyncService;
 import net.njw.aftertheend.registry.ModContent;
@@ -29,6 +30,7 @@ public final class AfterTheEnd {
 
     public AfterTheEnd(IEventBus modEventBus, ModContainer modContainer) {
         ModContent.register(modEventBus);
+        ModGameTests.register(modEventBus);
         modEventBus.addListener(CityNetworkHandler::registerPayloads);
         NeoForge.EVENT_BUS.register(CityBoundaryHandler.class);
         NeoForge.EVENT_BUS.register(CityInteractionHandler.class);
