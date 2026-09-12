@@ -12,11 +12,12 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.pig.Pig;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.neoforged.bus.api.IEventBus;
@@ -97,12 +98,13 @@ public final class ModGameTests {
         int oldMax = CityManager.getMaxCityCount(server);
         int baselineAccessible = CityManager.getAccessibleCities(server).size();
         TestCity testCity = createTestCity(server, new BlockPos(5000, TEST_Y, 5000), 2, 0);
-        City target = CityManager.getNextLockedCity(server);
+        City target = CityManager.getLockedCities(server).stream().findFirst().orElse(null);
         if (target == null) {
             cleanupTestCity(server, testCity);
-            helper.fail("No ready locked city exists for first-ritual unlock test.");
+            helper.fail("No locked city exists for first-ritual unlock test.");
             return;
         }
+        if (!AltarManager.isGenerated(server, target.id())) AltarManager.markGenerated(server, target.id(), List.of());
         UUID targetId = target.id();
         CityManager.setMaxCityCount(server, Math.max(oldMax, baselineAccessible + 3));
         startRitual(level, testCity.placements().get(0), null);
@@ -160,7 +162,6 @@ public final class ModGameTests {
         });
     }
 
-    @SuppressWarnings("removal")
     private static void maxCityCountRejectsFirstRitual(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         MinecraftServer server = level.getServer();
@@ -186,7 +187,7 @@ public final class ModGameTests {
         }
 
         level.setBlock(geometry.center(), net.njw.justdragoneggs.registry.ModContent.RECORDED_DRAGON_EGG.get().defaultBlockState(), 3);
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
         AltarRitualHandler.handlePlacedBlock(level, geometry.center(), player);
         helper.runAfterDelay(5L, () -> {
             try {
@@ -247,7 +248,7 @@ public final class ModGameTests {
         if (chunks.add(chunk)) level.setChunkForced(chunk.x(), chunk.z(), true);
     }
 
-    private static void startRitual(ServerLevel level, AltarPlacement placement, ServerPlayer player) {
+    private static void startRitual(ServerLevel level, AltarPlacement placement, Player player) {
         RitualGeometry geometry = geometry(placement);
         for (BlockPos socket : geometry.sockets()) {
             level.setBlock(socket, ModContent.RESONANCE_CRYSTAL.get().defaultBlockState(), 3);
