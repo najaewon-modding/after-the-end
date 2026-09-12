@@ -213,20 +213,45 @@ public final class ActivatedAltarClientEffects {
                                                    double radius, boolean large, double phase) {
         double outerVertexRadius = radius * (large ? 0.635 : 0.620);
         double outerControlRadius = outerVertexRadius * 0.655;
-        double outerWidth = large ? 0.122 : 0.108;
-        double innerVertexRadius = outerVertexRadius * 0.52;
-        double innerControlRadius = innerVertexRadius * 0.63;
-        double innerWidth = large ? 0.046 : 0.040;
+        double outerWidth = large ? 0.074 : 0.066;
+        double innerVertexRadius = outerVertexRadius * 0.56;
+        double innerControlRadius = innerVertexRadius * 0.58;
+        double innerWidth = large ? 0.036 : 0.032;
         double base = phase - Math.PI * 0.5;
 
         renderCurvedTriangle(pose, consumer, x, y, z, outerVertexRadius, outerControlRadius, base,
-                outerWidth, 14, PALE_RED, PALE_GREEN, PALE_BLUE, 238);
+                outerWidth, 16, PALE_RED, PALE_GREEN, PALE_BLUE, 232);
         renderCurvedTriangle(pose, consumer, x, y + 0.002, z, innerVertexRadius, innerControlRadius, base + Math.PI,
-                innerWidth, 10, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 184);
+                innerWidth, 12, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 176);
+        renderInnerFlows(pose, consumer, x, y + 0.004, z, outerVertexRadius, base, large);
 
-        double centerRadius = radius * (large ? 0.105 : 0.098);
-        renderPolygonOutline(pose, consumer, x, y + 0.004, z, centerRadius, 3, base,
-                large ? 0.034 : 0.030, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 164);
+        double centerRadius = radius * (large ? 0.112 : 0.105);
+        renderPolygonOutline(pose, consumer, x, y + 0.006, z, centerRadius, 3, base + Math.PI,
+                large ? 0.032 : 0.028, PALE_RED, PALE_GREEN, PALE_BLUE, 210);
+    }
+
+    private static void renderInnerFlows(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                         double outerVertexRadius, double base, boolean large) {
+        double startRadius = outerVertexRadius * 0.46;
+        double endRadius = outerVertexRadius * 0.18;
+        double controlRadius = outerVertexRadius * 0.075;
+        double width = large ? 0.033 : 0.029;
+
+        for (int i = 0; i < 3; i++) {
+            double corner = base + i * Math.PI * 2.0 / 3.0;
+            double next = corner + Math.PI * 2.0 / 3.0;
+            double startAngle = corner + 0.19;
+            double endAngle = next - 0.34;
+            double controlAngle = corner + Math.PI / 3.0 + 0.12;
+            double x1 = x + Math.cos(startAngle) * startRadius;
+            double z1 = z + Math.sin(startAngle) * startRadius;
+            double x2 = x + Math.cos(endAngle) * endRadius;
+            double z2 = z + Math.sin(endAngle) * endRadius;
+            double cx = x + Math.cos(controlAngle) * controlRadius;
+            double cz = z + Math.sin(controlAngle) * controlRadius;
+            renderQuadraticBezierXZ(pose, consumer, x1, y, z1, cx, cz, x2, z2,
+                    width, 10, PALE_RED, PALE_GREEN, PALE_BLUE, 190);
+        }
     }
 
     private static void renderCurvedTriangle(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
