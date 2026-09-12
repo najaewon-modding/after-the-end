@@ -12,12 +12,12 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -67,11 +67,11 @@ public final class AltarRitualHandler {
     @SubscribeEvent
     public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
         if (!(event.getLevel() instanceof ServerLevel level) || !level.dimension().equals(Level.OVERWORLD)) return;
-        ServerPlayer player = event.getEntity() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+        Player player = event.getEntity() instanceof Player placingPlayer ? placingPlayer : null;
         handlePlacedBlock(level, event.getPos(), player);
     }
 
-    public static void handlePlacedBlock(ServerLevel level, BlockPos pos, ServerPlayer player) {
+    public static void handlePlacedBlock(ServerLevel level, BlockPos pos, Player player) {
         if (!level.dimension().equals(Level.OVERWORLD)) return;
         BlockState state = level.getBlockState(pos);
         if (state.is(ModContent.RESONANCE_CRYSTAL.get())) {
@@ -116,7 +116,7 @@ public final class AltarRitualHandler {
         if (level != null) tryStartPending(server, level);
     }
 
-    private static void handleResonanceCrystalPlaced(ServerLevel level, BlockPos pos, ServerPlayer player) {
+    private static void handleResonanceCrystalPlaced(ServerLevel level, BlockPos pos, Player player) {
         MinecraftServer server = level.getServer();
         AltarSite site = findSocketSite(server, pos, true);
         if (site == null) return;
@@ -144,7 +144,7 @@ public final class AltarRitualHandler {
         if (hasRitualPattern(level, site.geometry())) tryStartRitual(server, level, site);
     }
 
-    private static void handleRecordedDragonEggPlaced(ServerLevel level, BlockPos pos, ServerPlayer player) {
+    private static void handleRecordedDragonEggPlaced(ServerLevel level, BlockPos pos, Player player) {
         MinecraftServer server = level.getServer();
         AltarSite site = findCenterSite(server, pos, true);
         if (site == null || !hasCrystalPattern(level, site.geometry())) return;
@@ -156,11 +156,11 @@ public final class AltarRitualHandler {
         tryStartRitual(server, level, site);
     }
 
-    private static void rejectRecordedEgg(ServerLevel level, AltarSite site, ServerPlayer player) {
+    private static void rejectRecordedEgg(ServerLevel level, AltarSite site, Player player) {
         BlockState eggState = level.getBlockState(site.geometry().center());
         if (!(eggState.getBlock() instanceof RecordedDragonEggBlock)) return;
         eggState.attack(level, site.geometry().center(), player);
-        player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.altar.cannot_activate"));
+        player.displayClientMessage(Component.translatable("message.njw_after_the_end.altar.cannot_activate"), true);
     }
 
     static boolean canActivate(int activatedCount, int unlockedCityCount, int maxCityCount) {
