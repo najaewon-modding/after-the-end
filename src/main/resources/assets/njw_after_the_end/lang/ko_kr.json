@@ -13,6 +13,8 @@
   "gui.njw_after_the_end.city_list.dimension.nether": "네더",
   "gui.njw_after_the_end.city_list.coordinates": "X %s  Z %s",
   "gui.njw_after_the_end.city_list.move": "이동",
+  "gui.njw_after_the_end.city_list.save": "저장",
+  "gui.njw_after_the_end.city_list.edit_name": "도시 이름",
   "gui.njw_after_the_end.city_list.close": "닫기",
 
   "message.njw_after_the_end.boundary.return_warning": "%s초 안에 해금된 도시 영역으로 돌아오세요.",
