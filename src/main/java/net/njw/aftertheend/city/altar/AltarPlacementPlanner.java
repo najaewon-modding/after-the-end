@@ -44,10 +44,6 @@ final class AltarPlacementPlanner {
     private static final double PAIR_DISTANCE_WEIGHT = 18.0;
     private static final double AVERAGE_DISTANCE_REWARD = 3.0;
     private static final double ACTUAL_ABSOLUTE_SCORE_LIMIT = 2_000.0;
-    private static final double ACTUAL_DEGRADATION_MIN_LIMIT = 12.0;
-    private static final double ACTUAL_DEGRADATION_MULTIPLIER = 4.0;
-    private static final double OUTLIER_MIN_DELTA = 8.0;
-    private static final double OUTLIER_MULTIPLIER = 3.0;
     private static final long OPTIMIZER_SEED_SALT = 0x6a09e667f3bcc909L;
 
     private static final TemplateSize SMALL = new TemplateSize(11, 7);
@@ -188,18 +184,6 @@ final class AltarPlacementPlanner {
             for (int candidateIndex : selection.selected()) {
                 Candidate candidate = session.candidates.get(candidateIndex);
                 if (!candidate.smallExactEvaluated) return requestExact(session, candidateIndex, ExactRole.SMALL);
-            }
-
-            int outlier = findSmallExactOutlier(selection, session.candidates);
-            if (outlier >= 0) {
-                Candidate candidate = session.candidates.get(outlier);
-                candidate.smallReject = "exact terrain outlier";
-                AfterTheEnd.LOGGER.info(
-                        "Altar planner {}: rejected Small exact candidate sample={} chunk=({}, {}) as terrain-score outlier; re-optimizing.",
-                        session.cityId, candidate.chunk.sampleIndex(), candidate.chunk.chunkX(), candidate.chunk.chunkZ()
-                );
-                session.selection = null;
-                continue;
             }
 
             if (session.hasLarge) {
@@ -440,7 +424,7 @@ final class AltarPlacementPlanner {
         ActualSiteResult result = mode == ExactMode.FAST_CENTER
                 ? evaluateActualSiteAtCenter(session.level, virtualSite, size, bounds)
                 : evaluateActualSite(session.level, candidate.chunk, size, bounds);
-        String reject = exactRejectReason(virtualSite, result, role == ExactRole.SMALL ? "small" : "large");
+        String reject = exactRejectReason(result, role == ExactRole.SMALL ? "small" : "large");
         session.exactEvaluations++;
 
         if (mode == ExactMode.FAST_CENTER && !reject.isEmpty()) {
@@ -570,7 +554,7 @@ final class AltarPlacementPlanner {
         );
     }
 
-    private static String exactRejectReason(Site virtualSite, ActualSiteResult actualResult, String role) {
+    private static String exactRejectReason(ActualSiteResult actualResult, String role) {
         if (actualResult.site() == null) return actualResult.rejectReason().isEmpty() ? role + " has no exact-valid center" : actualResult.rejectReason();
         Site actual = actualResult.site();
         TerrainAssessment terrain = actual.terrain();
@@ -582,32 +566,7 @@ final class AltarPlacementPlanner {
         if (actual.score() > ACTUAL_ABSOLUTE_SCORE_LIMIT) {
             return role + " actual score " + format(actual.score()) + " > " + format(ACTUAL_ABSOLUTE_SCORE_LIMIT);
         }
-        if (virtualSite != null) {
-            double degradation = actual.score() - virtualSite.score();
-            double limit = Math.max(
-                    ACTUAL_DEGRADATION_MIN_LIMIT,
-                    Math.max(0.0, virtualSite.score()) * ACTUAL_DEGRADATION_MULTIPLIER
-            );
-            if (degradation > limit) return role + " degraded by " + format(degradation) + " > " + format(limit);
-        }
         return "";
-    }
-
-    private static int findSmallExactOutlier(SelectionResult selection, List<Candidate> candidates) {
-        List<IndexedScore> scores = new ArrayList<>();
-        for (int index : selection.selected()) {
-            Candidate candidate = candidates.get(index);
-            if (!candidate.smallExactEvaluated || candidate.exactSmall == null || !candidate.smallReject.isEmpty()) continue;
-            scores.add(new IndexedScore(index, candidate.exactSmall.score()));
-        }
-        if (scores.size() < 3) return -1;
-        double[] sorted = scores.stream().mapToDouble(IndexedScore::score).sorted().toArray();
-        double median = sorted.length % 2 == 1
-                ? sorted[sorted.length / 2]
-                : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) * 0.5;
-        double threshold = Math.max(median + OUTLIER_MIN_DELTA, median * OUTLIER_MULTIPLIER);
-        IndexedScore worst = scores.stream().max(Comparator.comparingDouble(IndexedScore::score)).orElseThrow();
-        return worst.score() > threshold ? worst.index() : -1;
     }
 
     private static Site evaluateVirtualSiteCoarse(
@@ -1483,6 +1442,5 @@ final class AltarPlacementPlanner {
     private record ActualSiteResult(Site site, String rejectReason) { }
     private record SearchBounds(int minCenterX, int maxCenterX, int minCenterZ, int maxCenterZ) { }
     private record AssignmentScore(double objective, int largeCandidateIndex) { }
-    private record IndexedScore(int index, double score) { }
     private record SelectionResult(int[] selected, int largeCandidateIndex, double objective, List<Double> restartObjectives) { }
 }
