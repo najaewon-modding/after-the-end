@@ -139,22 +139,30 @@ public final class ActivatedAltarClientEffects {
     private static void renderEcho(PoseStack.Pose pose, VertexConsumer consumer, AltarEcho echo) {
         double radius = echo.large() ? 3.55 : 2.50;
         double floorY = echo.y() + 0.035;
-        double outerPhase = echo.gameTime() * 0.0090 + echo.x() * 0.003 + echo.z() * 0.002;
-        double supportPhase = -echo.gameTime() * 0.0048 + echo.x() * 0.0015 - echo.z() * 0.001;
-        double sealPhase = echo.gameTime() * 0.0022 + echo.x() * 0.0011 - echo.z() * 0.0013;
-        double accentPhase = -echo.gameTime() * 0.0016 + echo.x() * 0.0007 + echo.z() * 0.0009;
+        double outerPhase = echo.gameTime() * 0.0065 + echo.x() * 0.003 + echo.z() * 0.002;
+        double orbitPhase = -echo.gameTime() * 0.0034 + echo.x() * 0.0015 - echo.z() * 0.001;
+        double bandPhase = echo.gameTime() * 0.0019 + echo.x() * 0.0011 - echo.z() * 0.0013;
+        double weavePhase = -echo.gameTime() * 0.00125 + echo.x() * 0.0007 + echo.z() * 0.0009;
 
-        renderBrokenRing(pose, consumer, echo.x(), floorY, echo.z(), radius, 0.072,
-                echo.large() ? 19 : 16, 0.60, 3, outerPhase, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 176);
-        renderBrokenRing(pose, consumer, echo.x(), floorY + 0.003, echo.z(), radius * 0.72, 0.034,
-                echo.large() ? 15 : 12, 0.40, 2, supportPhase, SOFT_RED, SOFT_GREEN, SOFT_BLUE, 92);
-        if (echo.large()) {
-            renderBrokenRing(pose, consumer, echo.x(), floorY + 0.005, echo.z(), radius * 0.88, 0.026,
-                    24, 0.28, 2, -outerPhase * 0.52, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 72);
-        }
+        renderBrokenRing(pose, consumer, echo.x(), floorY, echo.z(), radius, 0.056,
+                echo.large() ? 22 : 18, 0.64, 3, outerPhase, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 170);
+        renderSolidRing(pose, consumer, echo.x(), floorY + 0.002, echo.z(), radius * 0.925, 0.018,
+                72, SOFT_RED, SOFT_GREEN, SOFT_BLUE, 108);
+        renderSolidRing(pose, consumer, echo.x(), floorY + 0.004, echo.z(), radius * 0.835, 0.024,
+                72, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 142);
+        renderOrbitNodes(pose, consumer, echo.x(), floorY + 0.006, echo.z(), radius * 0.885,
+                echo.large() ? 7 : 6, orbitPhase, radius * 0.026, true);
+        renderOrbitNodes(pose, consumer, echo.x(), floorY + 0.007, echo.z(), radius * 0.790,
+                echo.large() ? 5 : 4, -orbitPhase * 0.73 + 0.41, radius * 0.019, false);
 
-        renderCardinalAccents(pose, consumer, echo.x(), floorY + 0.008, echo.z(), radius, echo.large(), accentPhase);
-        renderGeometricSeal(pose, consumer, echo.x(), floorY + 0.012, echo.z(), radius, echo.large(), sealPhase);
+        renderSolidRing(pose, consumer, echo.x(), floorY + 0.008, echo.z(), radius * 0.745, 0.018,
+                64, SOFT_RED, SOFT_GREEN, SOFT_BLUE, 86);
+        renderLatticeBand(pose, consumer, echo.x(), floorY + 0.010, echo.z(), radius * 0.675, radius * 0.735,
+                echo.large() ? 30 : 24, bandPhase);
+        renderSolidRing(pose, consumer, echo.x(), floorY + 0.012, echo.z(), radius * 0.665, 0.021,
+                64, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 126);
+
+        renderAstralSeal(pose, consumer, echo.x(), floorY + 0.014, echo.z(), radius, echo.large(), weavePhase);
 
         double bob = Math.sin(echo.gameTime() * 0.12 + echo.x() * 0.05 + echo.z() * 0.04) * 0.08;
         renderCore(pose, consumer, echo.x(), echo.y() + 1.05 + bob, echo.z(), echo.gameTime());
@@ -177,103 +185,161 @@ public final class ActivatedAltarClientEffects {
         }
     }
 
-    private static void renderCardinalAccents(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                              double radius, boolean large, double phase) {
-        double accentRadius = radius * 0.835;
-        double diamondOuter = radius * (large ? 0.074 : 0.080);
-        double diamondInner = diamondOuter * 0.48;
-        double radialWidth = large ? 0.040 : 0.036;
-        double tangentHalf = radius * 0.046;
-
-        for (int i = 0; i < 4; i++) {
-            double angle = phase + i * Math.PI * 0.5;
-            double cos = Math.cos(angle);
-            double sin = Math.sin(angle);
-            double tx = -sin;
-            double tz = cos;
-
-            renderDiamond(pose, consumer,
-                    x + cos * accentRadius, y, z + sin * accentRadius,
-                    diamondOuter, diamondInner, angle, PALE_RED, PALE_GREEN, PALE_BLUE, 208);
-
-            renderLineXZ(pose, consumer,
-                    x + cos * radius * 0.735, y, z + sin * radius * 0.735,
-                    x + cos * radius * 0.775, z + sin * radius * 0.775,
-                    radialWidth, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 132);
-
-            double markRadius = radius * 0.915;
-            renderLineXZ(pose, consumer,
-                    x + cos * markRadius - tx * tangentHalf, y, z + sin * markRadius - tz * tangentHalf,
-                    x + cos * markRadius + tx * tangentHalf, z + sin * markRadius + tz * tangentHalf,
-                    radialWidth * 0.78, SOFT_RED, SOFT_GREEN, SOFT_BLUE, 112);
-        }
-    }
-
-    private static void renderGeometricSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                            double radius, boolean large, double phase) {
-        double outerRadius = radius * (large ? 0.50 : 0.48);
-        double diamondRadius = radius * (large ? 0.365 : 0.350);
-        double innerRadius = radius * (large ? 0.245 : 0.235);
-        double centerRadius = radius * (large ? 0.115 : 0.108);
-        double outerWidth = large ? 0.046 : 0.042;
-        double diamondWidth = large ? 0.052 : 0.047;
-        double innerWidth = large ? 0.030 : 0.027;
-
-        renderPolygonOutline(pose, consumer, x, y, z, outerRadius, 8, phase + Math.PI / 8.0,
-                outerWidth, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 178);
-        renderRadialTicks(pose, consumer, x, y + 0.002, z, radius, phase, large);
-        renderPolygonOutline(pose, consumer, x, y + 0.004, z, diamondRadius, 4, phase + Math.PI / 4.0,
-                diamondWidth, PALE_RED, PALE_GREEN, PALE_BLUE, 218);
-        renderPolygonOutline(pose, consumer, x, y + 0.006, z, innerRadius, 8, -phase * 0.72 + Math.PI / 8.0,
-                innerWidth, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 148);
-        renderBrokenRing(pose, consumer, x, y + 0.008, z, centerRadius, large ? 0.028 : 0.025,
-                8, 0.54, 2, -phase * 1.25, PALE_RED, PALE_GREEN, PALE_BLUE, 192);
-        renderPolygonOutline(pose, consumer, x, y + 0.010, z, centerRadius * 0.58, 4, phase + Math.PI / 4.0,
-                large ? 0.026 : 0.023, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 180);
-    }
-
-    private static void renderRadialTicks(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                          double radius, double phase, boolean large) {
-        double start = radius * (large ? 0.405 : 0.398);
-        double end = radius * (large ? 0.452 : 0.445);
-        double width = large ? 0.026 : 0.023;
-        for (int i = 0; i < 8; i++) {
-            double angle = phase + Math.PI / 8.0 + i * Math.PI / 4.0;
-            double cos = Math.cos(angle);
-            double sin = Math.sin(angle);
-            renderLineXZ(pose, consumer,
-                    x + cos * start, y, z + sin * start,
-                    x + cos * end, z + sin * end,
-                    width, SOFT_RED, SOFT_GREEN, SOFT_BLUE, 120);
-        }
-    }
-
-    private static void renderDiamond(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                      double outer, double inner, double angle,
-                                      int red, int green, int blue, int alpha) {
-        for (int i = 0; i < 4; i++) {
-            double a1 = angle + i * Math.PI * 0.5;
-            double a2 = angle + (i + 1) * Math.PI * 0.5;
-            double mid = (a1 + a2) * 0.5;
-            addQuad(pose, consumer,
-                    x + Math.cos(a1) * outer, y, z + Math.sin(a1) * outer,
-                    x + Math.cos(mid) * inner, y, z + Math.sin(mid) * inner,
-                    x + Math.cos(a2) * outer, y, z + Math.sin(a2) * outer,
-                    x + Math.cos(mid) * outer * 0.93, y, z + Math.sin(mid) * outer * 0.93,
+    private static void renderSolidRing(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                        double radius, double thickness, int segments,
+                                        int red, int green, int blue, int alpha) {
+        for (int i = 0; i < segments; i++) {
+            double a1 = Math.PI * 2.0 * i / segments;
+            double a2 = Math.PI * 2.0 * (i + 1) / segments;
+            addRingSegment(pose, consumer, x, y, z, radius, radius - thickness, a1, a2,
                     red, green, blue, alpha);
         }
     }
 
-    private static void renderPolygonOutline(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                             double radius, int sides, double angleOffset, double width,
-                                             int red, int green, int blue, int alpha) {
-        for (int i = 0; i < sides; i++) {
-            double a1 = angleOffset + Math.PI * 2.0 * i / sides;
-            double a2 = angleOffset + Math.PI * 2.0 * (i + 1) / sides;
+    private static void renderOrbitNodes(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                         double orbitRadius, int count, double phase, double nodeRadius, boolean emphasize) {
+        for (int i = 0; i < count; i++) {
+            double angle = phase + i * Math.PI * 2.0 / count + Math.sin(i * 2.37) * 0.11;
+            double nx = x + Math.cos(angle) * orbitRadius;
+            double nz = z + Math.sin(angle) * orbitRadius;
+            double scale = 0.72 + 0.34 * (0.5 + 0.5 * Math.sin(i * 1.91 + phase * 0.7));
+            double r = nodeRadius * scale;
+            renderFilledDisc(pose, consumer, nx, y, nz, r, 12,
+                    emphasize ? PALE_RED : GOLD_RED,
+                    emphasize ? PALE_GREEN : GOLD_GREEN,
+                    emphasize ? PALE_BLUE : GOLD_BLUE,
+                    emphasize ? 216 : 164);
+            renderSolidRing(pose, consumer, nx, y + 0.001, nz, r * 1.65, Math.max(0.010, r * 0.28), 16,
+                    GOLD_RED, GOLD_GREEN, GOLD_BLUE, emphasize ? 142 : 96);
+        }
+    }
+
+    private static void renderLatticeBand(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                          double innerRadius, double outerRadius, int segments, double phase) {
+        double width = (outerRadius - innerRadius) * 0.11;
+        for (int i = 0; i < segments; i++) {
+            double a1 = phase + Math.PI * 2.0 * i / segments;
+            double a2 = phase + Math.PI * 2.0 * (i + 1) / segments;
             renderLineXZ(pose, consumer,
-                    x + Math.cos(a1) * radius, y, z + Math.sin(a1) * radius,
-                    x + Math.cos(a2) * radius, z + Math.sin(a2) * radius,
-                    width, red, green, blue, alpha);
+                    x + Math.cos(a1) * innerRadius, y, z + Math.sin(a1) * innerRadius,
+                    x + Math.cos(a2) * outerRadius, z + Math.sin(a2) * outerRadius,
+                    width, SOFT_RED, SOFT_GREEN, SOFT_BLUE, 82);
+            renderLineXZ(pose, consumer,
+                    x + Math.cos(a1) * outerRadius, y, z + Math.sin(a1) * outerRadius,
+                    x + Math.cos(a2) * innerRadius, z + Math.sin(a2) * innerRadius,
+                    width, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 66);
+        }
+    }
+
+    private static void renderAstralSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                         double radius, boolean large, double phase) {
+        double outer = radius * 0.585;
+        double middle = radius * 0.525;
+        double weaveLong = radius * 0.455;
+        double weaveShort = radius * 0.265;
+        double inner = radius * 0.245;
+        double core = radius * 0.155;
+
+        renderSolidRing(pose, consumer, x, y, z, outer, large ? 0.040 : 0.035, 72,
+                PALE_RED, PALE_GREEN, PALE_BLUE, 210);
+        renderSolidRing(pose, consumer, x, y + 0.002, z, middle, large ? 0.020 : 0.017, 72,
+                GOLD_RED, GOLD_GREEN, GOLD_BLUE, 132);
+        renderBrokenRing(pose, consumer, x, y + 0.003, z, (outer + middle) * 0.5, large ? 0.018 : 0.015,
+                large ? 28 : 24, 0.42, 2, phase * 1.7, SOFT_RED, SOFT_GREEN, SOFT_BLUE, 82);
+
+        for (int i = 0; i < 5; i++) {
+            double rotation = phase + i * Math.PI / 5.0;
+            renderEllipseOutline(pose, consumer, x, y + 0.004 + i * 0.0005, z,
+                    weaveLong, weaveShort, rotation, 40,
+                    large ? 0.024 : 0.020, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 112);
+        }
+        for (int i = 0; i < 3; i++) {
+            double rotation = -phase * 0.81 + Math.PI / 10.0 + i * Math.PI / 3.0;
+            renderEllipseOutline(pose, consumer, x, y + 0.007 + i * 0.0005, z,
+                    weaveLong * 0.86, weaveShort * 0.78, rotation, 36,
+                    large ? 0.017 : 0.015, PALE_RED, PALE_GREEN, PALE_BLUE, 86);
+        }
+
+        renderOrbitNode(pose, consumer, x, y + 0.009, z, radius * 0.395, phase + 0.58,
+                radius * (large ? 0.060 : 0.056), true);
+        renderOrbitNode(pose, consumer, x, y + 0.010, z, radius * 0.335, phase + 3.62,
+                radius * (large ? 0.047 : 0.043), false);
+
+        renderSolidRing(pose, consumer, x, y + 0.011, z, inner, large ? 0.034 : 0.030, 56,
+                PALE_RED, PALE_GREEN, PALE_BLUE, 222);
+        renderSolidRing(pose, consumer, x, y + 0.013, z, core, large ? 0.020 : 0.018, 48,
+                GOLD_RED, GOLD_GREEN, GOLD_BLUE, 172);
+        renderRoseCurve(pose, consumer, x, y + 0.015, z, core * 0.84, core * 0.30,
+                large ? 7 : 6, phase * 1.35, 72, large ? 0.018 : 0.016,
+                PALE_RED, PALE_GREEN, PALE_BLUE, 176);
+        renderFilledDisc(pose, consumer, x, y + 0.017, z, core * 0.22, 16,
+                PALE_RED, PALE_GREEN, PALE_BLUE, 220);
+    }
+
+    private static void renderOrbitNode(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                        double orbitRadius, double angle, double nodeRadius, boolean pale) {
+        double nx = x + Math.cos(angle) * orbitRadius;
+        double nz = z + Math.sin(angle) * orbitRadius;
+        renderFilledDisc(pose, consumer, nx, y, nz, nodeRadius * 0.58, 16,
+                pale ? PALE_RED : GOLD_RED,
+                pale ? PALE_GREEN : GOLD_GREEN,
+                pale ? PALE_BLUE : GOLD_BLUE,
+                pale ? 224 : 188);
+        renderSolidRing(pose, consumer, nx, y + 0.001, nz, nodeRadius, Math.max(0.012, nodeRadius * 0.16), 24,
+                GOLD_RED, GOLD_GREEN, GOLD_BLUE, pale ? 188 : 148);
+        renderSolidRing(pose, consumer, nx, y + 0.002, nz, nodeRadius * 1.24, Math.max(0.009, nodeRadius * 0.08), 24,
+                SOFT_RED, SOFT_GREEN, SOFT_BLUE, 88);
+    }
+
+    private static void renderEllipseOutline(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                             double radiusX, double radiusZ, double rotation, int segments, double width,
+                                             int red, int green, int blue, int alpha) {
+        double cosR = Math.cos(rotation);
+        double sinR = Math.sin(rotation);
+        double previousX = x + radiusX * cosR;
+        double previousZ = z + radiusX * sinR;
+        for (int i = 1; i <= segments; i++) {
+            double angle = Math.PI * 2.0 * i / segments;
+            double lx = Math.cos(angle) * radiusX;
+            double lz = Math.sin(angle) * radiusZ;
+            double nextX = x + lx * cosR - lz * sinR;
+            double nextZ = z + lx * sinR + lz * cosR;
+            renderLineXZ(pose, consumer, previousX, y, previousZ, nextX, nextZ, width,
+                    red, green, blue, alpha);
+            previousX = nextX;
+            previousZ = nextZ;
+        }
+    }
+
+    private static void renderRoseCurve(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                        double baseRadius, double amplitude, int petals, double phase, int segments,
+                                        double width, int red, int green, int blue, int alpha) {
+        double previousAngle = 0.0;
+        double previousRadius = baseRadius + amplitude * Math.cos(petals * previousAngle + phase);
+        double previousX = x + Math.cos(previousAngle + phase * 0.31) * previousRadius;
+        double previousZ = z + Math.sin(previousAngle + phase * 0.31) * previousRadius;
+        for (int i = 1; i <= segments; i++) {
+            double angle = Math.PI * 2.0 * i / segments;
+            double r = baseRadius + amplitude * Math.cos(petals * angle + phase);
+            double nextX = x + Math.cos(angle + phase * 0.31) * r;
+            double nextZ = z + Math.sin(angle + phase * 0.31) * r;
+            renderLineXZ(pose, consumer, previousX, y, previousZ, nextX, nextZ, width,
+                    red, green, blue, alpha);
+            previousX = nextX;
+            previousZ = nextZ;
+        }
+    }
+
+    private static void renderFilledDisc(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                         double radius, int segments, int red, int green, int blue, int alpha) {
+        Point center = new Point(x, y, z);
+        for (int i = 0; i < segments; i++) {
+            double a1 = Math.PI * 2.0 * i / segments;
+            double a2 = Math.PI * 2.0 * (i + 1) / segments;
+            addTriangle(pose, consumer, center,
+                    new Point(x + Math.cos(a1) * radius, y, z + Math.sin(a1) * radius),
+                    new Point(x + Math.cos(a2) * radius, y, z + Math.sin(a2) * radius),
+                    red, green, blue, alpha);
         }
     }
 
