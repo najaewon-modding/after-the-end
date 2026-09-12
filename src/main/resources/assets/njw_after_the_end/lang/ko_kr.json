@@ -10,5 +10,6 @@
   "gui.njw_after_the_end.city_list.dimension.overworld": "오버월드",
   "gui.njw_after_the_end.city_list.dimension.nether": "네더",
   "gui.njw_after_the_end.city_list.move": "이동",
-  "gui.njw_after_the_end.city_list.close": "닫기"
+  "gui.njw_after_the_end.city_list.close": "닫기",
+  "message.njw_after_the_end.city_move.requires_activated_altar": "도시 이동은 활성화된 제단 근처에서만 가능합니다."
 }
