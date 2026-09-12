@@ -154,7 +154,7 @@ public final class ActivatedAltarClientEffects {
         }
 
         renderCardinalAccents(pose, consumer, echo.x(), floorY + 0.008, echo.z(), radius, echo.large(), accentPhase);
-        renderResonanceRibbonSeal(pose, consumer, echo.x(), floorY + 0.012, echo.z(), radius, echo.large(), sealPhase);
+        renderGeometricSeal(pose, consumer, echo.x(), floorY + 0.012, echo.z(), radius, echo.large(), sealPhase);
 
         double bob = Math.sin(echo.gameTime() * 0.12 + echo.x() * 0.05 + echo.z() * 0.04) * 0.08;
         renderCore(pose, consumer, echo.x(), echo.y() + 1.05 + bob, echo.z(), echo.gameTime());
@@ -209,75 +209,42 @@ public final class ActivatedAltarClientEffects {
         }
     }
 
-    private static void renderResonanceRibbonSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                                  double radius, boolean large, double phase) {
-        double base = phase - Math.PI * 0.5;
-        double outerRadius = radius * (large ? 0.635 : 0.620);
-        double endRadius = outerRadius * 0.43;
-        double controlOuter = outerRadius * 0.82;
-        double controlInner = outerRadius * 0.31;
-        double mainStartWidth = large ? 0.072 : 0.064;
-        double mainEndWidth = large ? 0.032 : 0.028;
+    private static void renderGeometricSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                            double radius, boolean large, double phase) {
+        double outerRadius = radius * (large ? 0.50 : 0.48);
+        double diamondRadius = radius * (large ? 0.365 : 0.350);
+        double innerRadius = radius * (large ? 0.245 : 0.235);
+        double centerRadius = radius * (large ? 0.115 : 0.108);
+        double outerWidth = large ? 0.046 : 0.042;
+        double diamondWidth = large ? 0.052 : 0.047;
+        double innerWidth = large ? 0.030 : 0.027;
 
-        for (int i = 0; i < 3; i++) {
-            double a = base + i * Math.PI * 2.0 / 3.0;
-            double b = a + Math.PI * 2.0 / 3.0;
-
-            double x1 = x + Math.cos(a + 0.045) * outerRadius;
-            double z1 = z + Math.sin(a + 0.045) * outerRadius;
-            double c1x = x + Math.cos(a + 0.52) * controlOuter;
-            double c1z = z + Math.sin(a + 0.52) * controlOuter;
-            double c2x = x + Math.cos(b - 0.50) * controlInner;
-            double c2z = z + Math.sin(b - 0.50) * controlInner;
-            double x2 = x + Math.cos(b - 0.18) * endRadius;
-            double z2 = z + Math.sin(b - 0.18) * endRadius;
-
-            renderCubicBezierXZ(pose, consumer, x1, y, z1, c1x, c1z, c2x, c2z, x2, z2,
-                    mainStartWidth, mainEndWidth, 18, PALE_RED, PALE_GREEN, PALE_BLUE, 232);
-
-            double tracerOuter = outerRadius * 0.87;
-            double tracerEnd = endRadius * 0.82;
-            double tx1 = x + Math.cos(a + 0.105) * tracerOuter;
-            double tz1 = z + Math.sin(a + 0.105) * tracerOuter;
-            double tc1x = x + Math.cos(a + 0.55) * controlOuter * 0.84;
-            double tc1z = z + Math.sin(a + 0.55) * controlOuter * 0.84;
-            double tc2x = x + Math.cos(b - 0.46) * controlInner * 0.76;
-            double tc2z = z + Math.sin(b - 0.46) * controlInner * 0.76;
-            double tx2 = x + Math.cos(b - 0.15) * tracerEnd;
-            double tz2 = z + Math.sin(b - 0.15) * tracerEnd;
-
-            renderCubicBezierXZ(pose, consumer, tx1, y + 0.002, tz1, tc1x, tc1z, tc2x, tc2z, tx2, tz2,
-                    mainStartWidth * 0.40, mainEndWidth * 0.58, 16, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 180);
-        }
-
-        double centerRadius = radius * (large ? 0.105 : 0.098);
-        renderBrokenRing(pose, consumer, x, y + 0.004, z, centerRadius, large ? 0.024 : 0.021,
-                6, 0.46, 2, -phase * 1.35, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 150);
+        renderPolygonOutline(pose, consumer, x, y, z, outerRadius, 8, phase + Math.PI / 8.0,
+                outerWidth, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 178);
+        renderRadialTicks(pose, consumer, x, y + 0.002, z, radius, phase, large);
+        renderPolygonOutline(pose, consumer, x, y + 0.004, z, diamondRadius, 4, phase + Math.PI / 4.0,
+                diamondWidth, PALE_RED, PALE_GREEN, PALE_BLUE, 218);
+        renderPolygonOutline(pose, consumer, x, y + 0.006, z, innerRadius, 8, -phase * 0.72 + Math.PI / 8.0,
+                innerWidth, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 148);
+        renderBrokenRing(pose, consumer, x, y + 0.008, z, centerRadius, large ? 0.028 : 0.025,
+                8, 0.54, 2, -phase * 1.25, PALE_RED, PALE_GREEN, PALE_BLUE, 192);
+        renderPolygonOutline(pose, consumer, x, y + 0.010, z, centerRadius * 0.58, 4, phase + Math.PI / 4.0,
+                large ? 0.026 : 0.023, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 180);
     }
 
-    private static void renderCubicBezierXZ(PoseStack.Pose pose, VertexConsumer consumer,
-                                            double x1, double y, double z1,
-                                            double c1x, double c1z, double c2x, double c2z,
-                                            double x2, double z2, double startWidth, double endWidth, int segments,
-                                            int red, int green, int blue, int alpha) {
-        double previousX = x1;
-        double previousZ = z1;
-        for (int i = 1; i <= segments; i++) {
-            double t = (double)i / segments;
-            double u = 1.0 - t;
-            double nextX = u * u * u * x1
-                    + 3.0 * u * u * t * c1x
-                    + 3.0 * u * t * t * c2x
-                    + t * t * t * x2;
-            double nextZ = u * u * u * z1
-                    + 3.0 * u * u * t * c1z
-                    + 3.0 * u * t * t * c2z
-                    + t * t * t * z2;
-            double width = startWidth + (endWidth - startWidth) * t;
-            renderLineXZ(pose, consumer, previousX, y, previousZ, nextX, nextZ, width,
-                    red, green, blue, alpha);
-            previousX = nextX;
-            previousZ = nextZ;
+    private static void renderRadialTicks(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                          double radius, double phase, boolean large) {
+        double start = radius * (large ? 0.405 : 0.398);
+        double end = radius * (large ? 0.452 : 0.445);
+        double width = large ? 0.026 : 0.023;
+        for (int i = 0; i < 8; i++) {
+            double angle = phase + Math.PI / 8.0 + i * Math.PI / 4.0;
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            renderLineXZ(pose, consumer,
+                    x + cos * start, y, z + sin * start,
+                    x + cos * end, z + sin * end,
+                    width, SOFT_RED, SOFT_GREEN, SOFT_BLUE, 120);
         }
     }
 
@@ -294,6 +261,19 @@ public final class ActivatedAltarClientEffects {
                     x + Math.cos(a2) * outer, y, z + Math.sin(a2) * outer,
                     x + Math.cos(mid) * outer * 0.93, y, z + Math.sin(mid) * outer * 0.93,
                     red, green, blue, alpha);
+        }
+    }
+
+    private static void renderPolygonOutline(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                             double radius, int sides, double angleOffset, double width,
+                                             int red, int green, int blue, int alpha) {
+        for (int i = 0; i < sides; i++) {
+            double a1 = angleOffset + Math.PI * 2.0 * i / sides;
+            double a2 = angleOffset + Math.PI * 2.0 * (i + 1) / sides;
+            renderLineXZ(pose, consumer,
+                    x + Math.cos(a1) * radius, y, z + Math.sin(a1) * radius,
+                    x + Math.cos(a2) * radius, z + Math.sin(a2) * radius,
+                    width, red, green, blue, alpha);
         }
     }
 
