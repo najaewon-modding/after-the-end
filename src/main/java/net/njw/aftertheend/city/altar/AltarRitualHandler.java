@@ -129,12 +129,15 @@ public final class AltarRitualHandler {
     }
 
     static boolean canActivate(int activatedCount, int unlockedCityCount, int maxCityCount) {
-        if (activatedCount >= MAX_ACTIVATED_ALTARS_PER_CITY) return false;
-        return activatedCount > 0 || unlockedCityCount < maxCityCount;
+        return AltarActivationPolicy.canActivate(
+                activatedCount, MAX_ACTIVATED_ALTARS_PER_CITY, unlockedCityCount, maxCityCount
+        );
     }
 
     static boolean unlocksCity(int activatedCount, int unlockedCityCount, int maxCityCount) {
-        return activatedCount == 0 && canActivate(activatedCount, unlockedCityCount, maxCityCount);
+        return AltarActivationPolicy.unlocksCity(
+                activatedCount, MAX_ACTIVATED_ALTARS_PER_CITY, unlockedCityCount, maxCityCount
+        );
     }
 
     private static boolean canActivateAltar(MinecraftServer server, UUID cityId) {
