@@ -118,6 +118,16 @@ public final class CitySavedData extends SavedData {
         setDirty();
     }
 
+    public void renameCity(UUID cityId, String name) {
+        City city = cities.get(cityId);
+        if (city == null) throw new IllegalArgumentException("Unknown city: " + cityId);
+        String normalized = Objects.requireNonNull(name, "name").strip();
+        if (normalized.isBlank()) throw new IllegalArgumentException("City name must not be blank.");
+        if (normalized.equals(city.name())) return;
+        cities.put(cityId, new City(city.id(), normalized, city.regions()));
+        setDirty();
+    }
+
     public Collection<City> getAccessibleCities() {
         List<City> result = new ArrayList<>(accessibleCityIds.size());
         for (UUID cityId : accessibleCityIds) { City city = cities.get(cityId); if (city != null) result.add(city); }
