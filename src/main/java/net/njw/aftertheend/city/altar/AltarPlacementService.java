@@ -53,7 +53,7 @@ public final class AltarPlacementService {
         return true;
     }
 
-    static Preparation beginPreparation(MinecraftServer server, City city) {
+    static PreparationSeed createPreparationSeed(MinecraftServer server, City city) {
         if (AltarManager.isGenerated(server, city.id())) return null;
         ServerLevel level = server.getLevel(Level.OVERWORLD);
         CityRegion region = city.getRegion(Level.OVERWORLD).orElseThrow(
@@ -65,10 +65,23 @@ public final class AltarPlacementService {
         List<AltarPlacementPlanner.Request> requests = specs.stream()
                 .map(spec -> new AltarPlacementPlanner.Request(spec.index(), spec.large()))
                 .toList();
+        return new PreparationSeed(city.id(), level, region, seed, specs, requests);
+    }
+
+    static Preparation buildPreparation(PreparationSeed preparationSeed) {
         AltarPlacementPlanner.PreparationSession planner = AltarPlacementPlanner.beginPreparation(
-                level, region, requests, seed, city.id()
+                preparationSeed.level(), preparationSeed.region(), preparationSeed.requests(),
+                preparationSeed.seed(), preparationSeed.cityId()
         );
-        return new Preparation(city.id(), level, seed, specs, planner);
+        return new Preparation(
+                preparationSeed.cityId(), preparationSeed.level(), preparationSeed.seed(),
+                preparationSeed.specs(), planner
+        );
+    }
+
+    static Preparation beginPreparation(MinecraftServer server, City city) {
+        PreparationSeed preparationSeed = createPreparationSeed(server, city);
+        return preparationSeed == null ? null : buildPreparation(preparationSeed);
     }
 
     static AltarPlacementPlanner.PreparationStep advancePreparation(Preparation preparation) {
@@ -317,6 +330,32 @@ public final class AltarPlacementService {
         value ^= value >>> 33;
         value *= 0xc4ceb9fe1a85ec53L;
         return value ^ value >>> 33;
+    }
+
+    static final class PreparationSeed {
+        private final UUID cityId;
+        private final ServerLevel level;
+        private final CityRegion region;
+        private final long seed;
+        private final List<AltarSpec> specs;
+        private final List<AltarPlacementPlanner.Request> requests;
+
+        private PreparationSeed(UUID cityId, ServerLevel level, CityRegion region, long seed,
+                                List<AltarSpec> specs, List<AltarPlacementPlanner.Request> requests) {
+            this.cityId = cityId;
+            this.level = level;
+            this.region = region;
+            this.seed = seed;
+            this.specs = specs;
+            this.requests = requests;
+        }
+
+        UUID cityId() { return cityId; }
+        ServerLevel level() { return level; }
+        CityRegion region() { return region; }
+        long seed() { return seed; }
+        List<AltarSpec> specs() { return specs; }
+        List<AltarPlacementPlanner.Request> requests() { return requests; }
     }
 
     static final class Preparation {
