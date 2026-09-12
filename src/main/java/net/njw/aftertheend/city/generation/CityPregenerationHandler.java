@@ -1,5 +1,8 @@
 package net.njw.aftertheend.city.generation;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -17,17 +20,13 @@ import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityRegion;
 import net.njw.aftertheend.city.CitySavedData;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 public final class CityPregenerationHandler {
     private static final int WARMUP_RADIUS_CHUNKS = 16;
     private static final int LOG_INTERVAL_CHUNKS = 100;
     private static final int SAVE_INTERVAL_CHUNKS = 100;
     private static final long TIME_BUDGET_NANOS = 5_000_000L;
     private static final int MAX_CHUNKS_PER_TICK = 4;
-    private static final Component LOAD_KICK_MESSAGE = Component.literal("City chunks are being loaded. Please reconnect after loading has finished.");
+    private static final Component LOAD_KICK_MESSAGE = Component.translatable("message.njw_after_the_end.city_load.in_progress");
 
     private static final List<PregenerationTask> tasks = new ArrayList<>();
     private static int currentTaskIndex;
@@ -36,8 +35,7 @@ public final class CityPregenerationHandler {
     private static volatile boolean maintenanceActive;
     private static UUID activeCityId;
 
-    private CityPregenerationHandler() {
-    }
+    private CityPregenerationHandler() { }
 
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
@@ -46,7 +44,6 @@ public final class CityPregenerationHandler {
 
     public static int startCityLoad(MinecraftServer server, City city) {
         if (active) throw new IllegalStateException("City chunk loading is already active for: " + activeCityId);
-
         tasks.clear();
         currentTaskIndex = 0;
         savedData = server.getDataStorage().computeIfAbsent(CitySavedData.TYPE);
@@ -55,7 +52,6 @@ public final class CityPregenerationHandler {
             savedData = null;
             return 0;
         }
-
         activeCityId = city.id();
         maintenanceActive = true;
         active = true;
@@ -78,7 +74,6 @@ public final class CityPregenerationHandler {
         if (region == null || savedData.isPregenerationCompleted(city.id(), dimension)) return;
         ServerLevel level = server.getLevel(dimension);
         if (level == null) return;
-
         int diameter = WARMUP_RADIUS_CHUNKS * 2 + 1;
         CityRegion warmupRegion = new CityRegion(region.centerChunkX(), region.centerChunkZ(), diameter, diameter);
         long alreadyGenerated = savedData.getPregeneratedChunks(city.id(), dimension);
@@ -94,7 +89,6 @@ public final class CityPregenerationHandler {
     public static void onServerTick(ServerTickEvent.Post event) {
         if (!active || savedData == null) return;
         MinecraftServer server = event.getServer();
-
         if (!server.getPlayerList().getPlayers().isEmpty()) {
             disconnectAllPlayers(server);
             return;
@@ -139,9 +133,7 @@ public final class CityPregenerationHandler {
     }
 
     private static void disconnectAllPlayers(MinecraftServer server) {
-        for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
-            player.connection.disconnect(LOAD_KICK_MESSAGE);
-        }
+        for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) player.connection.disconnect(LOAD_KICK_MESSAGE);
     }
 
     private static void saveTaskProgress(PregenerationTask task) {
