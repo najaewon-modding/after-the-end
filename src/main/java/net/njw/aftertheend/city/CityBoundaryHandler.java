@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city;
 
+import java.util.UUID;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -8,14 +9,12 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
-import java.util.UUID;
-
 public final class CityBoundaryHandler {
     private static final long TELEPORT_DELAY_NANOS = 5_000_000_000L;
-    private static final int POSITION_SAVE_INTERVAL_TICKS = 20;
+    private static final int POSITION_SAVE_INTERVAL_TICKS = 80;
+    private static final double POSITION_SAVE_DISTANCE_SQUARED = 64.0;
 
-    private CityBoundaryHandler() {
-    }
+    private CityBoundaryHandler() { }
 
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
@@ -94,7 +93,13 @@ public final class CityBoundaryHandler {
             return;
         }
 
-        if (PlayerPositionTracker.incrementPositionSaveTicks(playerId) >= POSITION_SAVE_INTERVAL_TICKS) {
+        boolean changedChunk = blockCoordinate(lastPosition.x()) >> 4 != player.getBlockX() >> 4
+                || blockCoordinate(lastPosition.z()) >> 4 != player.getBlockZ() >> 4;
+        double dx = player.getX() - lastPosition.x();
+        double dz = player.getZ() - lastPosition.z();
+        boolean movedEnough = dx * dx + dz * dz >= POSITION_SAVE_DISTANCE_SQUARED;
+        boolean intervalElapsed = PlayerPositionTracker.incrementPositionSaveTicks(playerId) >= POSITION_SAVE_INTERVAL_TICKS;
+        if (changedChunk || movedEnough || intervalElapsed) {
             saveCurrentPosition(player, level, savedData);
             PlayerPositionTracker.resetPositionSaveTicks(playerId);
         }
@@ -112,7 +117,9 @@ public final class CityBoundaryHandler {
             return;
         }
         long remainingSeconds = (remainingNanos + 999_999_999L) / 1_000_000_000L;
-        player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.boundary.return_warning", remainingSeconds));
+        if (PlayerPositionTracker.shouldSendReturnWarning(playerId, remainingSeconds)) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.boundary.return_warning", remainingSeconds));
+        }
     }
 
     private static boolean returnPlayerToSafePosition(ServerPlayer player, CitySavedData savedData) {
