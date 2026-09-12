@@ -27,6 +27,12 @@ public final class AltarManager {
         return getSavedData(server).getActivatedCount(cityId);
     }
 
+    public static AltarSavedData.ActivationClaim claimActivation(
+            MinecraftServer server, UUID cityId, int blockX, int y, int blockZ, int maximumActivated
+    ) {
+        return getSavedData(server).claimActivation(cityId, blockX, y, blockZ, maximumActivated);
+    }
+
     public static boolean setActivated(MinecraftServer server, UUID cityId, int blockX, int y, int blockZ, boolean activated) {
         return getSavedData(server).setActivated(cityId, blockX, y, blockZ, activated);
     }
