@@ -12,7 +12,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityManager;
 import net.njw.aftertheend.city.CityRegion;
@@ -43,10 +42,8 @@ public final class EnderEyeHandler {
             return;
         }
 
-        AfterTheEnd.LOGGER.info("Ender Eye target: x={}, y={}, z={}", target.getX(), target.getY(), target.getZ());
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.SUCCESS);
-
         EyeOfEnder eye = new EyeOfEnder(level, player.getX(), player.getY(0.5), player.getZ());
         eye.setItem(stack);
         eye.signalTo(new Vec3(target.getX() + 0.5, target.getY(), target.getZ() + 0.5));
