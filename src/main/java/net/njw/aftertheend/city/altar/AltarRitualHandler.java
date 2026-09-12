@@ -1,12 +1,15 @@
 package net.njw.aftertheend.city.altar;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -32,10 +35,11 @@ import net.njw.aftertheend.city.CityManager;
 import net.njw.aftertheend.network.AltarActivationPayload;
 import net.njw.aftertheend.network.CitySyncService;
 import net.njw.aftertheend.registry.ModContent;
+import net.njw.justdragoneggs.block.RecordedDragonEggBlock;
+import net.njw.justdragoneggs.block.entity.RecordedDragonEggBlockEntity;
 
 public final class AltarRitualHandler {
     public static final int MAX_ACTIVATED_ALTARS_PER_CITY = 3;
-    private static final int SCAN_INTERVAL_TICKS = 5;
     private static final int RISE_DURATION_TICKS = 80;
     private static final int BEAM_DURATION_TICKS = 100;
     private static final int END_TICK = RISE_DURATION_TICKS + BEAM_DURATION_TICKS;
@@ -43,69 +47,70 @@ public final class AltarRitualHandler {
     private static final double EGG_RISE_HEIGHT = 10.0;
     private static final int FLASH_COLOR = 0xE2DEE5;
     private static final int SOCKET_COLOR = 0xC8B7D4;
-    private static final Identifier RECORDED_DRAGON_EGG_ID = Identifier.fromNamespaceAndPath("njw_just_dragon_eggs", "recorded_dragon_egg");
-    private static RitualSequence activeSequence;
+    private static final Map<AltarKey, RitualSequence> ACTIVE_SEQUENCES = new LinkedHashMap<>();
+    private static final Set<AltarKey> PENDING_RITUALS = new LinkedHashSet<>();
 
     private AltarRitualHandler() { }
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
+        if (ACTIVE_SEQUENCES.isEmpty()) return;
         MinecraftServer server = event.getServer();
         ServerLevel level = server.getLevel(Level.OVERWORLD);
         if (level == null) return;
-
-        if (activeSequence != null) {
-            tickSequence(server, level, activeSequence);
-            return;
+        for (RitualSequence sequence : List.copyOf(ACTIVE_SEQUENCES.values())) {
+            if (ACTIVE_SEQUENCES.get(sequence.key) == sequence) tickSequence(server, level, sequence);
         }
-
-        if (Math.floorMod(level.getGameTime(), SCAN_INTERVAL_TICKS) != 0L) return;
-        tryStartRitual(server, level);
     }
 
     @SubscribeEvent
     public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
-        if (!(event.getLevel() instanceof ServerLevel level)) return;
-        if (!level.dimension().equals(Level.OVERWORLD)) return;
+        if (!(event.getLevel() instanceof ServerLevel level) || !level.dimension().equals(Level.OVERWORLD)) return;
+        ServerPlayer player = event.getEntity() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
 
         if (event.getPlacedBlock().is(ModContent.RESONANCE_CRYSTAL.get())) {
-            handleResonanceCrystalPlaced(level, event.getPos());
+            handleResonanceCrystalPlaced(level, event.getPos(), player);
             return;
         }
-
-        Identifier placedBlockId = BuiltInRegistries.BLOCK.getKey(event.getPlacedBlock().getBlock());
-        if (!RECORDED_DRAGON_EGG_ID.equals(placedBlockId)) return;
-        if (event.getEntity() instanceof ServerPlayer player) handleRecordedDragonEggPlaced(level, event.getPos(), player);
+        if (event.getPlacedBlock().getBlock() instanceof RecordedDragonEggBlock) {
+            handleRecordedDragonEggPlaced(level, event.getPos(), player);
+        }
     }
 
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
-        if (activeSequence == null) return;
         ServerLevel level = event.getServer().getLevel(Level.OVERWORLD);
-        if (level != null) restoreEgg(level, activeSequence);
-        activeSequence = null;
+        if (level != null) {
+            for (RitualSequence sequence : List.copyOf(ACTIVE_SEQUENCES.values())) restoreEgg(level, sequence);
+        }
+        ACTIVE_SEQUENCES.clear();
+        PENDING_RITUALS.clear();
     }
 
     public static boolean isResonanceSocket(ServerLevel level, BlockPos pos) {
-        if (!level.dimension().equals(Level.OVERWORLD)) return false;
-        return findSocketSite(level.getServer(), pos, false) != null;
+        return level.dimension().equals(Level.OVERWORLD) && findSocketSite(level.getServer(), pos, false) != null;
     }
 
-    private static void handleResonanceCrystalPlaced(ServerLevel level, BlockPos pos) {
-        AltarSite site = findSocketSite(level.getServer(), pos, true);
+    public static void retryPending(MinecraftServer server) {
+        ServerLevel level = server.getLevel(Level.OVERWORLD);
+        if (level != null) tryStartPending(server, level);
+    }
+
+    private static void handleResonanceCrystalPlaced(ServerLevel level, BlockPos pos, ServerPlayer player) {
+        MinecraftServer server = level.getServer();
+        AltarSite site = findSocketSite(server, pos, true);
         if (site == null) return;
 
         BlockState placedState = level.getBlockState(pos);
-        boolean canActivate = canActivateAltar(level.getServer(), site.cityId());
-        if (!canActivate) {
-            if (placedState.getValue(ResonanceCrystalBlock.CALMED)) {
-                level.setBlock(pos, placedState.setValue(ResonanceCrystalBlock.CALMED, false), 3);
-            }
-            return;
+        boolean canPrepare = canPrepareAltar(server, site.cityId(), site.key());
+        if (placedState.getValue(ResonanceCrystalBlock.CALMED) != canPrepare) {
+            level.setBlock(pos, placedState.setValue(ResonanceCrystalBlock.CALMED, canPrepare), 3);
         }
 
-        if (!placedState.getValue(ResonanceCrystalBlock.CALMED)) {
-            level.setBlock(pos, placedState.setValue(ResonanceCrystalBlock.CALMED, true), 3);
+        if (!canPrepare) {
+            PENDING_RITUALS.remove(site.key());
+            if (player != null && hasRitualPattern(level, site.geometry())) rejectRecordedEgg(level, site, player);
+            return;
         }
 
         int occupied = 0;
@@ -116,15 +121,25 @@ public final class AltarRitualHandler {
         level.playSound(null, pos, SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.BLOCKS, 1.15F, pitch);
         level.sendParticles(new DustParticleOptions(SOCKET_COLOR, 0.95F), pos.getX() + 0.5, pos.getY() + 0.6,
                 pos.getZ() + 0.5, 14, 0.3, 0.4, 0.3, 0.025);
+        if (hasRitualPattern(level, site.geometry())) tryStartRitual(server, level, site);
     }
 
     private static void handleRecordedDragonEggPlaced(ServerLevel level, BlockPos pos, ServerPlayer player) {
-        AltarSite site = findCenterSite(level.getServer(), pos, true);
+        MinecraftServer server = level.getServer();
+        AltarSite site = findCenterSite(server, pos, true);
         if (site == null || !hasCrystalPattern(level, site.geometry())) return;
-        if (canActivateAltar(level.getServer(), site.cityId())) return;
+        if (!canPrepareAltar(server, site.cityId(), site.key())) {
+            PENDING_RITUALS.remove(site.key());
+            if (player != null) rejectRecordedEgg(level, site, player);
+            return;
+        }
+        tryStartRitual(server, level, site);
+    }
 
-        BlockState eggState = level.getBlockState(pos);
-        eggState.attack(level, pos, player);
+    private static void rejectRecordedEgg(ServerLevel level, AltarSite site, ServerPlayer player) {
+        BlockState eggState = level.getBlockState(site.geometry().center());
+        if (!(eggState.getBlock() instanceof RecordedDragonEggBlock)) return;
+        eggState.attack(level, site.geometry().center(), player);
         player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.altar.cannot_activate"));
     }
 
@@ -148,66 +163,104 @@ public final class AltarRitualHandler {
         );
     }
 
-    private static void tryStartRitual(MinecraftServer server, ServerLevel level) {
-        int unlockedCityCount = CityManager.getAccessibleCities(server).size();
-        int maxCityCount = CityManager.getMaxCityCount(server);
-        for (City city : CityManager.getAccessibleCities(server)) {
-            int activatedCount = AltarManager.getActivatedCount(server, city.id());
-            if (!canActivate(activatedCount, unlockedCityCount, maxCityCount)) continue;
+    private static boolean canPrepareAltar(MinecraftServer server, UUID cityId, AltarKey key) {
+        int activated = AltarManager.getActivatedCount(server, cityId);
+        int inFlight = activeSequenceCount(cityId, key);
+        if (activated + inFlight >= MAX_ACTIVATED_ALTARS_PER_CITY) return false;
+        return activated > 0 || CityManager.getAccessibleCities(server).size() < CityManager.getMaxCityCount(server);
+    }
 
-            UUID targetCityId = null;
-            if (unlocksCity(activatedCount, unlockedCityCount, maxCityCount)) {
-                City targetCity = CityManager.getNextLockedCity(server);
-                if (targetCity == null) continue;
-                targetCityId = targetCity.id();
-            }
+    private static int activeSequenceCount(UUID cityId, AltarKey excludedKey) {
+        int count = 0;
+        for (RitualSequence sequence : ACTIVE_SEQUENCES.values()) {
+            if (sequence.cityId.equals(cityId) && !sequence.key.equals(excludedKey)) count++;
+        }
+        return count;
+    }
 
-            for (AltarPlacement placement : AltarManager.getPlacements(server, city.id())) {
-                if (placement.activated()) continue;
-                RitualGeometry geometry = geometry(placement);
-                if (!hasRitualPattern(level, geometry)) continue;
+    private static boolean hasUnlockingSequence() {
+        for (RitualSequence sequence : ACTIVE_SEQUENCES.values()) if (sequence.targetCityId != null) return true;
+        return false;
+    }
 
-                BlockState eggState = level.getBlockState(geometry.center());
-                ItemStack eggStack = new ItemStack(eggState.getBlock());
-                if (eggStack.isEmpty()) continue;
-                if (!level.removeBlock(geometry.center(), false)) continue;
+    private static void tryStartRitual(MinecraftServer server, ServerLevel level, AltarSite site) {
+        AltarKey key = site.key();
+        if (ACTIVE_SEQUENCES.containsKey(key) || site.placement().activated() || !hasRitualPattern(level, site.geometry())) {
+            PENDING_RITUALS.remove(key);
+            return;
+        }
+        if (!canPrepareAltar(server, site.cityId(), key)) {
+            PENDING_RITUALS.remove(key);
+            updateCrystalCalmState(level, site.geometry(), false);
+            return;
+        }
 
-                Display.ItemDisplay floatingEgg = new Display.ItemDisplay(EntityType.ITEM_DISPLAY, level);
-                var slot = floatingEgg.getSlot(0);
-                if (slot == null || !slot.set(eggStack.copy())) {
-                    level.setBlock(geometry.center(), eggState, 3);
-                    continue;
-                }
-                floatingEgg.setPos(geometry.center().getX() + 0.5, geometry.center().getY() + 0.5, geometry.center().getZ() + 0.5);
-                level.addFreshEntity(floatingEgg);
-
-                activeSequence = new RitualSequence(
-                        city.id(), targetCityId, placement.blockX(), placement.y(), placement.blockZ(), placement.large(),
-                        geometry, level.getGameTime(), eggState, eggStack, floatingEgg
-                );
-                level.playSound(null, geometry.center(), SoundEvents.END_PORTAL_FRAME_FILL, SoundSource.BLOCKS, 1.0F, 0.65F);
-                level.sendParticles(ParticleTypes.PORTAL, geometry.center().getX() + 0.5, geometry.center().getY() + 0.8,
-                        geometry.center().getZ() + 0.5, 48, 2.0, 1.0, 2.0, 0.04);
-                broadcastEffect(level, activeSequence, false);
-                AfterTheEnd.LOGGER.info("Started Altar activation ritual: city={}, targetCity={}, altar=({}, {}, {})",
-                        city.id(), targetCityId, placement.blockX(), placement.y(), placement.blockZ());
+        int activatedCount = AltarManager.getActivatedCount(server, site.cityId());
+        UUID targetCityId = null;
+        if (unlocksCity(activatedCount, CityManager.getAccessibleCities(server).size(), CityManager.getMaxCityCount(server))) {
+            if (hasUnlockingSequence()) {
+                PENDING_RITUALS.add(key);
                 return;
             }
+            City targetCity = CityManager.getNextLockedCity(server);
+            if (targetCity == null) {
+                PENDING_RITUALS.add(key);
+                return;
+            }
+            targetCityId = targetCity.id();
+        }
+
+        RitualGeometry geometry = site.geometry();
+        BlockState eggState = level.getBlockState(geometry.center());
+        ItemStack eggStack = createRecordedEggStack(level, geometry.center());
+        if (eggStack.isEmpty() || !level.removeBlock(geometry.center(), false)) return;
+
+        Display.ItemDisplay floatingEgg = new Display.ItemDisplay(EntityType.ITEM_DISPLAY, level);
+        var slot = floatingEgg.getSlot(0);
+        if (slot == null || !slot.set(eggStack.copy())) {
+            restoreRecordedEggBlock(level, geometry.center(), eggState, eggStack);
+            return;
+        }
+        floatingEgg.setPos(geometry.center().getX() + 0.5, geometry.center().getY() + 0.5, geometry.center().getZ() + 0.5);
+        level.addFreshEntity(floatingEgg);
+
+        RitualSequence sequence = new RitualSequence(
+                key, site.cityId(), targetCityId, site.placement().large(), geometry,
+                level.getGameTime(), eggState, eggStack, floatingEgg
+        );
+        ACTIVE_SEQUENCES.put(key, sequence);
+        PENDING_RITUALS.remove(key);
+        level.playSound(null, geometry.center(), SoundEvents.END_PORTAL_FRAME_FILL, SoundSource.BLOCKS, 1.0F, 0.65F);
+        level.sendParticles(ParticleTypes.PORTAL, geometry.center().getX() + 0.5, geometry.center().getY() + 0.8,
+                geometry.center().getZ() + 0.5, 48, 2.0, 1.0, 2.0, 0.04);
+        broadcastEffect(level, sequence, false);
+        AfterTheEnd.LOGGER.debug("Started Altar ritual: city={}, targetCity={}, altar={}", site.cityId(), targetCityId, key);
+    }
+
+    private static void tryStartPending(MinecraftServer server, ServerLevel level) {
+        if (PENDING_RITUALS.isEmpty()) return;
+        for (AltarKey key : List.copyOf(PENDING_RITUALS)) {
+            AltarSite site = findSite(server, key);
+            if (site == null || site.placement().activated() || !hasRitualPattern(level, site.geometry())) {
+                PENDING_RITUALS.remove(key);
+                continue;
+            }
+            tryStartRitual(server, level, site);
         }
     }
 
     private static void tickSequence(MinecraftServer server, ServerLevel level, RitualSequence sequence) {
         long elapsed = level.getGameTime() - sequence.startGameTime;
         if (!canActivateAltar(server, sequence.cityId)) {
-            cancel(server, level, sequence, "Altar activation is no longer allowed");
+            cancel(server, level, sequence, "activation no longer allowed");
             return;
         }
         if (!isPatternLoaded(level, sequence.geometry) || !hasCrystalPattern(level, sequence.geometry)) {
-            cancel(server, level, sequence, "ritual crystals changed before activation");
+            cancel(server, level, sequence, "crystal pattern changed");
             return;
         }
         if (sequence.floatingEgg.isRemoved()) {
-            cancel(server, level, sequence, "floating Dragon Egg disappeared before activation");
+            cancel(server, level, sequence, "floating egg disappeared");
             return;
         }
 
@@ -236,13 +289,13 @@ public final class AltarRitualHandler {
 
     private static void complete(MinecraftServer server, ServerLevel level, RitualSequence sequence) {
         if (!hasCrystalPattern(level, sequence.geometry)) {
-            cancel(server, level, sequence, "ritual crystals are incomplete");
+            cancel(server, level, sequence, "crystal pattern incomplete");
             return;
         }
 
         int activatedCount = AltarManager.getActivatedCount(server, sequence.cityId);
         if (!canActivateAltar(server, sequence.cityId)) {
-            cancel(server, level, sequence, "Altar activation is no longer allowed");
+            cancel(server, level, sequence, "activation no longer allowed");
             return;
         }
 
@@ -253,7 +306,7 @@ public final class AltarRitualHandler {
         );
         boolean unlocksCity = sequence.targetCityId != null;
         if (shouldUnlockCity != unlocksCity) {
-            cancel(server, level, sequence, "Altar activation order changed");
+            cancel(server, level, sequence, "activation order changed");
             return;
         }
         if (unlocksCity) {
@@ -264,7 +317,7 @@ public final class AltarRitualHandler {
             }
         }
 
-        if (!AltarManager.setActivated(server, sequence.cityId, sequence.originX, sequence.originY, sequence.originZ, true)) {
+        if (!AltarManager.setActivated(server, sequence.cityId, sequence.key.originX(), sequence.key.originY(), sequence.key.originZ(), true)) {
             cancel(server, level, sequence, "Altar placement no longer exists");
             return;
         }
@@ -286,42 +339,58 @@ public final class AltarRitualHandler {
             try {
                 CityLifecycleService.unlockCity(server, sequence.targetCityId);
             } catch (RuntimeException exception) {
-                AltarManager.setActivated(server, sequence.cityId, sequence.originX, sequence.originY, sequence.originZ, false);
+                AltarManager.setActivated(server, sequence.cityId, sequence.key.originX(), sequence.key.originY(), sequence.key.originZ(), false);
                 eggDrop.discard();
-                if (level.getBlockState(sequence.geometry.center()).isAir()) {
-                    level.setBlock(sequence.geometry.center(), sequence.eggState, 3);
-                }
+                restoreRecordedEggBlock(level, sequence.geometry.center(), sequence.eggState, sequence.eggStack);
                 restoreCrystals(level, sequence.geometry, canActivateAltar(server, sequence.cityId));
+                finishSequence(server, level, sequence);
                 AfterTheEnd.LOGGER.error("Altar ritual failed while unlocking city {}", sequence.targetCityId, exception);
-                activeSequence = null;
                 return;
             }
-            AfterTheEnd.LOGGER.info("Activated first Altar and unlocked city {} from city {}.",
-                    sequence.targetCityId, sequence.cityId);
         } else {
             CitySyncService.syncToAll(server);
-            AfterTheEnd.LOGGER.info("Activated additional Altar in city {}.", sequence.cityId);
         }
-
-        activeSequence = null;
+        finishSequence(server, level, sequence);
     }
 
     private static void cancel(MinecraftServer server, ServerLevel level, RitualSequence sequence, String reason) {
         restoreEgg(level, sequence);
-        updateCrystalCalmState(level, sequence.geometry, canActivateAltar(server, sequence.cityId));
+        updateCrystalCalmState(level, sequence.geometry, canPrepareAltar(server, sequence.cityId, sequence.key));
         broadcastEffect(level, sequence, true);
-        AfterTheEnd.LOGGER.info("Cancelled Altar activation ritual at {}: {}", sequence.geometry.center(), reason);
-        activeSequence = null;
+        AfterTheEnd.LOGGER.debug("Cancelled Altar ritual at {}: {}", sequence.geometry.center(), reason);
+        finishSequence(server, level, sequence);
+    }
+
+    private static void finishSequence(MinecraftServer server, ServerLevel level, RitualSequence sequence) {
+        ACTIVE_SEQUENCES.remove(sequence.key, sequence);
+        tryStartPending(server, level);
+    }
+
+    private static ItemStack createRecordedEggStack(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof RecordedDragonEggBlock)) return ItemStack.EMPTY;
+        ItemStack stack = new ItemStack(net.njw.justdragoneggs.registry.ModContent.RECORDED_DRAGON_EGG_ITEM.get());
+        if (level.getBlockEntity(pos) instanceof RecordedDragonEggBlockEntity egg && egg.record() != null) {
+            stack.set(net.njw.justdragoneggs.registry.ModContent.BATTLE_RECORD.get(), egg.record());
+        }
+        return stack;
     }
 
     private static void restoreEgg(ServerLevel level, RitualSequence sequence) {
         Vec3 dropPosition = sequence.floatingEgg.position();
         sequence.floatingEgg.discard();
         if (level.getBlockState(sequence.geometry.center()).isAir()) {
-            level.setBlock(sequence.geometry.center(), sequence.eggState, 3);
+            restoreRecordedEggBlock(level, sequence.geometry.center(), sequence.eggState, sequence.eggStack);
             return;
         }
         level.addFreshEntity(new ItemEntity(level, dropPosition.x, dropPosition.y, dropPosition.z, sequence.eggStack.copy()));
+    }
+
+    private static void restoreRecordedEggBlock(ServerLevel level, BlockPos pos, BlockState state, ItemStack stack) {
+        if (!level.getBlockState(pos).isAir()) return;
+        level.setBlock(pos, state, 3);
+        var record = stack.get(net.njw.justdragoneggs.registry.ModContent.BATTLE_RECORD.get());
+        if (record != null && level.getBlockEntity(pos) instanceof RecordedDragonEggBlockEntity egg) egg.setRecord(record);
     }
 
     private static void restoreCrystals(ServerLevel level, RitualGeometry geometry, boolean calmed) {
@@ -334,8 +403,7 @@ public final class AltarRitualHandler {
     private static void updateCrystalCalmState(ServerLevel level, RitualGeometry geometry, boolean calmed) {
         for (BlockPos socket : geometry.sockets()) {
             BlockState state = level.getBlockState(socket);
-            if (!state.is(ModContent.RESONANCE_CRYSTAL.get())) continue;
-            if (state.getValue(ResonanceCrystalBlock.CALMED) != calmed) {
+            if (state.is(ModContent.RESONANCE_CRYSTAL.get()) && state.getValue(ResonanceCrystalBlock.CALMED) != calmed) {
                 level.setBlock(socket, state.setValue(ResonanceCrystalBlock.CALMED, calmed), 3);
             }
         }
@@ -348,27 +416,41 @@ public final class AltarRitualHandler {
     }
 
     private static AltarSite findSocketSite(MinecraftServer server, BlockPos pos, boolean inactiveOnly) {
-        for (City city : CityManager.getAccessibleCities(server)) {
-            for (AltarPlacement placement : AltarManager.getPlacements(server, city.id())) {
-                if (inactiveOnly && placement.activated()) continue;
-                RitualGeometry geometry = geometry(placement);
-                for (BlockPos socket : geometry.sockets()) {
-                    if (socket.equals(pos)) return new AltarSite(city.id(), placement, geometry);
-                }
+        City city = CityManager.findAccessibleCityContaining(server, Level.OVERWORLD, pos.getX(), pos.getZ());
+        if (city == null) return null;
+        for (AltarPlacement placement : AltarManager.getPlacements(server, city.id())) {
+            if (inactiveOnly && placement.activated()) continue;
+            RitualGeometry geometry = geometry(placement);
+            for (BlockPos socket : geometry.sockets()) {
+                if (socket.equals(pos)) return new AltarSite(city.id(), placement, geometry, key(city.id(), placement));
             }
         }
         return null;
     }
 
     private static AltarSite findCenterSite(MinecraftServer server, BlockPos pos, boolean inactiveOnly) {
-        for (City city : CityManager.getAccessibleCities(server)) {
-            for (AltarPlacement placement : AltarManager.getPlacements(server, city.id())) {
-                if (inactiveOnly && placement.activated()) continue;
-                RitualGeometry geometry = geometry(placement);
-                if (geometry.center().equals(pos)) return new AltarSite(city.id(), placement, geometry);
+        City city = CityManager.findAccessibleCityContaining(server, Level.OVERWORLD, pos.getX(), pos.getZ());
+        if (city == null) return null;
+        for (AltarPlacement placement : AltarManager.getPlacements(server, city.id())) {
+            if (inactiveOnly && placement.activated()) continue;
+            RitualGeometry geometry = geometry(placement);
+            if (geometry.center().equals(pos)) return new AltarSite(city.id(), placement, geometry, key(city.id(), placement));
+        }
+        return null;
+    }
+
+    private static AltarSite findSite(MinecraftServer server, AltarKey key) {
+        if (!CityManager.isCityAccessible(server, key.cityId())) return null;
+        for (AltarPlacement placement : AltarManager.getPlacements(server, key.cityId())) {
+            if (placement.blockX() == key.originX() && placement.y() == key.originY() && placement.blockZ() == key.originZ()) {
+                return new AltarSite(key.cityId(), placement, geometry(placement), key);
             }
         }
         return null;
+    }
+
+    private static AltarKey key(UUID cityId, AltarPlacement placement) {
+        return new AltarKey(cityId, placement.blockX(), placement.y(), placement.blockZ());
     }
 
     private static RitualGeometry geometry(AltarPlacement placement) {
@@ -393,9 +475,9 @@ public final class AltarRitualHandler {
     }
 
     private static boolean hasRitualPattern(ServerLevel level, RitualGeometry geometry) {
-        if (!isPatternLoaded(level, geometry)) return false;
-        Identifier centerBlockId = BuiltInRegistries.BLOCK.getKey(level.getBlockState(geometry.center()).getBlock());
-        return RECORDED_DRAGON_EGG_ID.equals(centerBlockId) && hasCrystalPattern(level, geometry);
+        return isPatternLoaded(level, geometry)
+                && level.getBlockState(geometry.center()).getBlock() instanceof RecordedDragonEggBlock
+                && hasCrystalPattern(level, geometry);
     }
 
     private static boolean hasCrystalPattern(ServerLevel level, RitualGeometry geometry) {
@@ -405,15 +487,14 @@ public final class AltarRitualHandler {
         return true;
     }
 
-    private record AltarSite(UUID cityId, AltarPlacement placement, RitualGeometry geometry) { }
+    private record AltarKey(UUID cityId, int originX, int originY, int originZ) { }
+    private record AltarSite(UUID cityId, AltarPlacement placement, RitualGeometry geometry, AltarKey key) { }
     private record RitualGeometry(BlockPos center, BlockPos[] sockets) { }
 
     private static final class RitualSequence {
+        private final AltarKey key;
         private final UUID cityId;
         private final UUID targetCityId;
-        private final int originX;
-        private final int originY;
-        private final int originZ;
         private final boolean large;
         private final RitualGeometry geometry;
         private final long startGameTime;
@@ -421,14 +502,11 @@ public final class AltarRitualHandler {
         private final ItemStack eggStack;
         private final Display.ItemDisplay floatingEgg;
 
-        private RitualSequence(UUID cityId, UUID targetCityId, int originX, int originY, int originZ, boolean large,
-                               RitualGeometry geometry, long startGameTime, BlockState eggState, ItemStack eggStack,
-                               Display.ItemDisplay floatingEgg) {
+        private RitualSequence(AltarKey key, UUID cityId, UUID targetCityId, boolean large, RitualGeometry geometry,
+                               long startGameTime, BlockState eggState, ItemStack eggStack, Display.ItemDisplay floatingEgg) {
+            this.key = key;
             this.cityId = cityId;
             this.targetCityId = targetCityId;
-            this.originX = originX;
-            this.originY = originY;
-            this.originZ = originZ;
             this.large = large;
             this.geometry = geometry;
             this.startGameTime = startGameTime;
