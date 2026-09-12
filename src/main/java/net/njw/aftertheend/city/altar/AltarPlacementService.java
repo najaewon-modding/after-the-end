@@ -138,7 +138,7 @@ public final class AltarPlacementService {
         for (CompletableFuture<?> future : futures) future.join();
         List<ChunkPos> remaining = missingRequiredChunks(preparation, step.candidateIndex());
         if (!remaining.isEmpty()) throw new IllegalStateException("Batch Altar chunk generation did not prepare: " + remaining);
-        AfterTheEnd.LOGGER.info(
+        AfterTheEnd.LOGGER.debug(
                 "chunk batch {} {} chunk(s) {}sec city={}",
                 AltarPlacementPlanner.statusName(step.chunkStatus()), missing.size(),
                 AltarPlacementPlanner.formatSeconds((System.nanoTime() - started) / 1_000_000_000.0), preparation.cityId()
