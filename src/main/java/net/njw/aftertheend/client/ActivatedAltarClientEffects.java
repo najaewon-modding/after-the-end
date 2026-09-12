@@ -114,35 +114,24 @@ public final class ActivatedAltarClientEffects {
     private static void renderEcho(PoseStack.Pose pose, VertexConsumer consumer, AltarEcho echo) {
         double radius = echo.large() ? 3.55 : 2.50;
         double floorY = echo.y() + 0.035;
-        double outerPhase = echo.gameTime() * 0.0145 + echo.x() * 0.003 + echo.z() * 0.002;
-        double innerPhase = -echo.gameTime() * 0.0085 + echo.x() * 0.0015 - echo.z() * 0.001;
-        double sealPhase = echo.gameTime() * 0.0032 + echo.x() * 0.0011 - echo.z() * 0.0013;
+        double outerPhase = echo.gameTime() * 0.0105 + echo.x() * 0.003 + echo.z() * 0.002;
+        double innerPhase = -echo.gameTime() * 0.0065 + echo.x() * 0.0015 - echo.z() * 0.001;
+        double sealPhase = echo.gameTime() * 0.0024 + echo.x() * 0.0011 - echo.z() * 0.0013;
 
-        renderRing(pose, consumer, echo.x(), floorY, echo.z(), radius, 0.105, 64,
-                GOLD_RED, GOLD_GREEN, GOLD_BLUE, 200);
-        renderBrokenRing(pose, consumer, echo.x(), floorY + 0.004, echo.z(), radius * 0.76, 0.055,
-                echo.large() ? 12 : 8, 0.46, 2, innerPhase, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 118);
+        renderBrokenRing(pose, consumer, echo.x(), floorY, echo.z(), radius, 0.080,
+                echo.large() ? 18 : 15, 0.62, 3, outerPhase, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 176);
+        renderBrokenRing(pose, consumer, echo.x(), floorY + 0.004, echo.z(), radius * 0.76, 0.045,
+                echo.large() ? 12 : 9, 0.50, 2, innerPhase, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 102);
         if (echo.large()) {
-            renderBrokenRing(pose, consumer, echo.x(), floorY + 0.007, echo.z(), radius * 0.58, 0.045,
-                    16, 0.38, 2, -outerPhase * 0.45, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 92);
+            renderBrokenRing(pose, consumer, echo.x(), floorY + 0.007, echo.z(), radius * 0.59, 0.038,
+                    15, 0.42, 2, -outerPhase * 0.48, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 86);
         }
 
-        renderCardinalSigils(pose, consumer, echo.x(), floorY + 0.010, echo.z(), radius, echo.large(), sealPhase);
-        renderInnerSeal(pose, consumer, echo.x(), floorY + 0.014, echo.z(), radius, echo.large(), sealPhase);
+        renderCardinalSigils(pose, consumer, echo.x(), floorY + 0.010, echo.z(), radius, echo.large(), sealPhase * 0.72);
+        renderTriangularSeal(pose, consumer, echo.x(), floorY + 0.016, echo.z(), radius, echo.large(), sealPhase);
 
         double bob = Math.sin(echo.gameTime() * 0.12 + echo.x() * 0.05 + echo.z() * 0.04) * 0.08;
         renderCore(pose, consumer, echo.x(), echo.y() + 1.05 + bob, echo.z(), echo.gameTime());
-    }
-
-    private static void renderRing(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                   double radius, double thickness, int segments,
-                                   int red, int green, int blue, int alpha) {
-        for (int i = 0; i < segments; i++) {
-            double a1 = Math.PI * 2.0 * i / segments;
-            double a2 = Math.PI * 2.0 * (i + 1) / segments;
-            addRingSegment(pose, consumer, x, y, z, radius, radius - thickness, a1, a2,
-                    red, green, blue, alpha);
-        }
     }
 
     private static void renderBrokenRing(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
@@ -164,12 +153,12 @@ public final class ActivatedAltarClientEffects {
 
     private static void renderCardinalSigils(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
                                               double radius, boolean large, double phase) {
-        double socketRadius = radius * 0.78;
-        double lineStart = radius * 0.28;
-        double lineEnd = socketRadius - radius * 0.13;
-        double lineWidth = large ? 0.050 : 0.044;
-        double diamondOuter = large ? radius * 0.105 : radius * 0.115;
-        double diamondInner = diamondOuter * 0.52;
+        double socketRadius = radius * 0.80;
+        double lineStart = radius * 0.31;
+        double lineEnd = socketRadius - radius * 0.14;
+        double lineWidth = large ? 0.054 : 0.048;
+        double diamondOuter = large ? radius * 0.102 : radius * 0.112;
+        double diamondInner = diamondOuter * 0.50;
 
         for (int i = 0; i < 4; i++) {
             double angle = phase + i * Math.PI * 0.5;
@@ -178,46 +167,83 @@ public final class ActivatedAltarClientEffects {
             renderLineXZ(pose, consumer,
                     x + cos * lineStart, y, z + sin * lineStart,
                     x + cos * lineEnd, z + sin * lineEnd,
-                    lineWidth, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 132);
+                    lineWidth, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 176);
             renderDiamond(pose, consumer,
                     x + cos * socketRadius, y + 0.002, z + sin * socketRadius,
-                    diamondOuter, diamondInner, angle, PALE_RED, PALE_GREEN, PALE_BLUE, 218);
+                    diamondOuter, diamondInner, angle, PALE_RED, PALE_GREEN, PALE_BLUE, 228);
 
-            double hookRadius = socketRadius + radius * 0.14;
-            double tangent = radius * 0.09;
+            double markRadius = socketRadius + radius * 0.13;
+            double tangent = radius * 0.065;
             double tx = -sin;
             double tz = cos;
             renderLineXZ(pose, consumer,
-                    x + cos * hookRadius - tx * tangent, y + 0.001, z + sin * hookRadius - tz * tangent,
-                    x + cos * hookRadius + tx * tangent, z + sin * hookRadius + tz * tangent,
-                    lineWidth, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 125);
+                    x + cos * markRadius - tx * tangent, y + 0.001, z + sin * markRadius - tz * tangent,
+                    x + cos * markRadius + tx * tangent, z + sin * markRadius + tz * tangent,
+                    lineWidth * 0.82, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 146);
         }
     }
 
-    private static void renderInnerSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                        double radius, boolean large, double phase) {
-        renderPolygonOutline(pose, consumer, x, y, z, radius * 0.43, 8, phase + Math.PI / 8.0,
-                0.045, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 148);
-        renderPolygonOutline(pose, consumer, x, y + 0.003, z, radius * 0.31, 4, phase + Math.PI / 4.0,
-                0.052, PALE_RED, PALE_GREEN, PALE_BLUE, 192);
-        renderPolygonOutline(pose, consumer, x, y + 0.006, z, radius * 0.22, 4, phase,
-                0.040, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 136);
+    private static void renderTriangularSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                             double radius, boolean large, double phase) {
+        double frameRadius = radius * (large ? 0.50 : 0.48);
+        double armRadius = radius * 0.405;
+        double controlRadius = radius * 0.095;
+        double innerRadius = radius * 0.155;
+        double base = phase - Math.PI * 0.5;
 
-        double spokeStart = radius * 0.08;
-        double spokeEnd = radius * 0.22;
-        for (int i = 0; i < 4; i++) {
-            double angle = phase + Math.PI * 0.25 + i * Math.PI * 0.5;
-            double cos = Math.cos(angle);
-            double sin = Math.sin(angle);
-            renderLineXZ(pose, consumer,
-                    x + cos * spokeStart, y + 0.008, z + sin * spokeStart,
-                    x + cos * spokeEnd, z + sin * spokeEnd,
-                    0.038, PALE_RED, PALE_GREEN, PALE_BLUE, 172);
+        renderBrokenRing(pose, consumer, x, y, z, frameRadius, 0.030,
+                large ? 12 : 9, 0.56, 2, -phase * 0.78, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 96);
+        renderPolygonOutline(pose, consumer, x, y + 0.002, z, radius * 0.445, 3, base,
+                large ? 0.066 : 0.060, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 214);
+
+        for (int i = 0; i < 3; i++) {
+            double a1 = base + i * Math.PI * 2.0 / 3.0;
+            double a2 = base + (i + 1) * Math.PI * 2.0 / 3.0;
+            double mid = (a1 + a2) * 0.5;
+            double x1 = x + Math.cos(a1) * armRadius;
+            double z1 = z + Math.sin(a1) * armRadius;
+            double x2 = x + Math.cos(a2) * armRadius;
+            double z2 = z + Math.sin(a2) * armRadius;
+            double cx = x + Math.cos(mid) * controlRadius;
+            double cz = z + Math.sin(mid) * controlRadius;
+            renderQuadraticBezierXZ(pose, consumer, x1, y + 0.005, z1, cx, cz, x2, z2,
+                    large ? 0.105 : 0.092, 10, PALE_RED, PALE_GREEN, PALE_BLUE, 232);
+
+            double innerStartRadius = armRadius * 0.76;
+            double innerControlRadius = controlRadius * 0.42;
+            double ix1 = x + Math.cos(a1 + 0.08) * innerStartRadius;
+            double iz1 = z + Math.sin(a1 + 0.08) * innerStartRadius;
+            double ix2 = x + Math.cos(a2 - 0.08) * innerStartRadius;
+            double iz2 = z + Math.sin(a2 - 0.08) * innerStartRadius;
+            double icx = x + Math.cos(mid) * innerControlRadius;
+            double icz = z + Math.sin(mid) * innerControlRadius;
+            renderQuadraticBezierXZ(pose, consumer, ix1, y + 0.008, iz1, icx, icz, ix2, iz2,
+                    large ? 0.044 : 0.038, 8, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 194);
         }
 
+        renderPolygonOutline(pose, consumer, x, y + 0.011, z, innerRadius, 3, base + Math.PI,
+                large ? 0.052 : 0.046, PALE_RED, PALE_GREEN, PALE_BLUE, 242);
         if (large) {
-            renderPolygonOutline(pose, consumer, x, y + 0.009, z, radius * 0.52, 4, phase + Math.PI / 4.0,
-                    0.030, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 88);
+            renderPolygonOutline(pose, consumer, x, y + 0.013, z, radius * 0.355, 3, base + Math.PI / 3.0,
+                    0.028, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 112);
+        }
+    }
+
+    private static void renderQuadraticBezierXZ(PoseStack.Pose pose, VertexConsumer consumer,
+                                                 double x1, double y, double z1, double cx, double cz,
+                                                 double x2, double z2, double width, int segments,
+                                                 int red, int green, int blue, int alpha) {
+        double previousX = x1;
+        double previousZ = z1;
+        for (int i = 1; i <= segments; i++) {
+            double t = (double)i / segments;
+            double u = 1.0 - t;
+            double nextX = u * u * x1 + 2.0 * u * t * cx + t * t * x2;
+            double nextZ = u * u * z1 + 2.0 * u * t * cz + t * t * z2;
+            renderLineXZ(pose, consumer, previousX, y, previousZ, nextX, nextZ, width,
+                    red, green, blue, alpha);
+            previousX = nextX;
+            previousZ = nextZ;
         }
     }
 
@@ -297,8 +323,8 @@ public final class ActivatedAltarClientEffects {
         addDoubleSidedTriangle(pose, consumer, bottom, north, west, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 225);
         addDoubleSidedTriangle(pose, consumer, bottom, east, north, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 232);
 
-        renderRing(pose, consumer, x, y, z, horizontal * 1.95, horizontal * 0.14, 32,
-                PALE_RED, PALE_GREEN, PALE_BLUE, 128);
+        renderBrokenRing(pose, consumer, x, y, z, horizontal * 1.95, horizontal * 0.14,
+                10, 0.60, 2, -gameTime * 0.012, PALE_RED, PALE_GREEN, PALE_BLUE, 126);
     }
 
     private static void addDoubleSidedTriangle(PoseStack.Pose pose, VertexConsumer consumer, Point a, Point b, Point c,
