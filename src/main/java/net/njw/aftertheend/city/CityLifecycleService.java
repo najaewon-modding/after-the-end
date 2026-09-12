@@ -39,8 +39,13 @@ public final class CityLifecycleService {
     }
 
     public static int getLockedCityReserveTarget(MinecraftServer server) {
-        int remainingCitySlots = Math.max(0,
-                CityManager.getMaxCityCount(server) - CityManager.getAccessibleCities(server).size());
+        return calculateLockedCityReserveTarget(
+                CityManager.getMaxCityCount(server), CityManager.getAccessibleCities(server).size()
+        );
+    }
+
+    static int calculateLockedCityReserveTarget(int maxCityCount, int unlockedCityCount) {
+        int remainingCitySlots = Math.max(0, maxCityCount - unlockedCityCount);
         return Math.min(LOCKED_CITY_RESERVE_COUNT, remainingCitySlots);
     }
 
