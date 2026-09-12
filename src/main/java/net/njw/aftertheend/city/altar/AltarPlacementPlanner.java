@@ -60,7 +60,9 @@ final class AltarPlacementPlanner {
 
     private static final TemplateSize SMALL = new TemplateSize(11, 7);
     private static final TemplateSize LARGE = new TemplateSize(27, 10);
-    private static final int FOOTPRINT_SAMPLE_COUNT = 9;
+    private static final int DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT = 3;
+    private static final int LARGE_VIRTUAL_SAMPLE_AXIS_COUNT = 5;
+    private static final int FOOTPRINT_SAMPLE_COUNT = DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT * DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT;
     private static final Map<FootprintStencilKey, FootprintStencil> FOOTPRINT_STENCILS = new ConcurrentHashMap<>();
 
     private AltarPlacementPlanner() { }
@@ -166,7 +168,8 @@ final class AltarPlacementPlanner {
             refineFutures.add(CompletableFuture.supplyAsync(() -> {
                 long started = System.nanoTime();
                 Site site = evaluateVirtualSite(
-                        level, generator, randomState, virtualSurfaceCache, candidate.chunk, SMALL, smallBounds, virtualSurfaceMode
+                        level, generator, randomState, virtualSurfaceCache, candidate.chunk, SMALL, smallBounds,
+                        virtualSurfaceMode, DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT
                 );
                 return new VirtualSiteEvaluation(candidateIndex, site, elapsedSeconds(started));
             }, virtualExecutor()));
@@ -281,6 +284,10 @@ final class AltarPlacementPlanner {
                     "Altar planning completed: city={}, structures={}, exactEvaluations={}, degraded={}",
                     session.cityId, session.count, session.exactEvaluations, session.degradedMode
             );
+            logAccuracy(session, "small", session.accuracy.small, DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT);
+            if (session.hasLarge || session.accuracy.large.fastAttempts > 0) {
+                logAccuracy(session, "large", session.accuracy.large, LARGE_VIRTUAL_SAMPLE_AXIS_COUNT);
+            }
             for (Plan plan : session.completedPlans) {
                 AfterTheEnd.LOGGER.debug(
                         "Altar plan city={} spec={} {} chunk=({}, {}) center=({}, {}, {}) terrain={} buried={} floating={} water={}",
@@ -301,7 +308,8 @@ final class AltarPlacementPlanner {
                 long started = System.nanoTime();
                 Site site = evaluateVirtualSite(
                         session.level, session.generator, session.randomState, session.virtualSurfaceCache,
-                        candidate.chunk, SMALL, session.smallBounds, session.virtualSurfaceMode
+                        candidate.chunk, SMALL, session.smallBounds, session.virtualSurfaceMode,
+                        DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT
                 );
                 return new VirtualSiteEvaluation(candidateIndex, site, elapsedSeconds(started));
             }, virtualExecutor()));
@@ -328,7 +336,8 @@ final class AltarPlacementPlanner {
                 long started = System.nanoTime();
                 Site site = evaluateVirtualSite(
                         session.level, session.generator, session.randomState, session.virtualSurfaceCache,
-                        candidate.chunk, LARGE, session.largeBounds, session.virtualSurfaceMode
+                        candidate.chunk, LARGE, session.largeBounds, session.virtualSurfaceMode,
+                        LARGE_VIRTUAL_SAMPLE_AXIS_COUNT
                 );
                 return new VirtualSiteEvaluation(candidateIndex, site, elapsedSeconds(started));
             }, virtualExecutor()));
@@ -341,9 +350,10 @@ final class AltarPlacementPlanner {
             int position = 0;
             while (position < selected.length && selected[position] != candidateIndex) position++;
             AfterTheEnd.LOGGER.debug(
-                    "[{}/{}] {}sec chunk=({}, {}) large={} city={}",
+                    "[{}/{}] {}sec chunk=({}, {}) large-virtual={} grid={}x{} city={}",
                     position + 1, selected.length, formatSeconds(evaluation.seconds()), candidate.chunk.chunkX(),
-                    candidate.chunk.chunkZ(), format(candidate.virtualLarge.score()), session.cityId
+                    candidate.chunk.chunkZ(), format(candidate.virtualLarge.score()), LARGE_VIRTUAL_SAMPLE_AXIS_COUNT,
+                    LARGE_VIRTUAL_SAMPLE_AXIS_COUNT, session.cityId
             );
         }
     }
@@ -418,6 +428,7 @@ final class AltarPlacementPlanner {
             case SMALL -> candidate.smallFallbackRequired ? ExactMode.FULL_SEARCH : ExactMode.FAST_CENTER;
             case LARGE -> candidate.largeFallbackRequired ? ExactMode.FULL_SEARCH : ExactMode.FAST_CENTER;
         };
+        recordExactAttempt(session, candidate, role, mode);
         session.pendingExactCandidateIndex = candidateIndex;
         session.pendingExactRole = role;
         session.pendingExactMode = mode;
@@ -425,6 +436,29 @@ final class AltarPlacementPlanner {
                 ? ChunkStatus.FULL
                 : ChunkStatus.STRUCTURE_REFERENCES;
         return PreparationStep.candidate(candidateIndex, session.pendingChunkStatus, requiredChunks(session, candidateIndex));
+    }
+
+    private static void recordExactAttempt(PreparationSession session, Candidate candidate, ExactRole role, ExactMode mode) {
+        RoleAccuracy accuracy = session.accuracy.forRole(role);
+        if (role == ExactRole.SMALL) {
+            if (mode == ExactMode.FAST_CENTER) {
+                if (candidate.smallFastAttemptCounted) return;
+                candidate.smallFastAttemptCounted = true;
+                accuracy.fastAttempts++;
+            } else {
+                if (candidate.smallFullSearchAttemptCounted) return;
+                candidate.smallFullSearchAttemptCounted = true;
+                accuracy.fullSearchAttempts++;
+            }
+        } else if (mode == ExactMode.FAST_CENTER) {
+            if (candidate.largeFastAttemptCounted) return;
+            candidate.largeFastAttemptCounted = true;
+            accuracy.fastAttempts++;
+        } else {
+            if (candidate.largeFullSearchAttemptCounted) return;
+            candidate.largeFullSearchAttemptCounted = true;
+            accuracy.fullSearchAttempts++;
+        }
     }
 
     private static boolean structurePrechecked(Candidate candidate, ExactRole role, ExactMode mode) {
@@ -527,6 +561,7 @@ final class AltarPlacementPlanner {
         Candidate candidate = session.candidates.get(candidateIndex);
         ExactRole role = session.pendingExactRole;
         ExactMode mode = session.pendingExactMode;
+        RoleAccuracy accuracy = session.accuracy.forRole(role);
         TemplateSize size = role == ExactRole.SMALL ? SMALL : LARGE;
         SearchBounds bounds = role == ExactRole.SMALL ? session.smallBounds : session.largeBounds;
         Site virtualSite = role == ExactRole.SMALL ? candidate.virtualSmall : candidate.virtualLarge;
@@ -543,6 +578,7 @@ final class AltarPlacementPlanner {
                         role == ExactRole.SMALL ? "small" : "large", session.cityId
                 );
             } else if (mode == ExactMode.FAST_CENTER) {
+                accuracy.structureFallbacks++;
                 if (role == ExactRole.SMALL) candidate.smallFallbackRequired = true;
                 else candidate.largeFallbackRequired = true;
                 AfterTheEnd.LOGGER.debug(
@@ -551,6 +587,7 @@ final class AltarPlacementPlanner {
                         formatSeconds(elapsedSeconds(started)), role == ExactRole.SMALL ? "small" : "large", session.cityId
                 );
             } else {
+                accuracy.fullSearchRejects++;
                 if (role == ExactRole.SMALL) {
                     candidate.smallExactEvaluated = true;
                     candidate.smallReject = "structure overlap";
@@ -577,6 +614,9 @@ final class AltarPlacementPlanner {
                 : evaluateActualSite(session.level, candidate.chunk, size, bounds);
         String reject = exactRejectReason(result, role == ExactRole.SMALL ? "small" : "large", session.degradedMode);
         session.exactEvaluations++;
+
+        if (mode == ExactMode.FAST_CENTER) recordFastComparison(session, role, virtualSite, result, reject);
+        else if (!reject.isEmpty()) accuracy.fullSearchRejects++;
 
         if (mode == ExactMode.FAST_CENTER && !reject.isEmpty()) {
             if (role == ExactRole.SMALL) candidate.smallFallbackRequired = true;
@@ -608,6 +648,104 @@ final class AltarPlacementPlanner {
             );
         }
         clearPendingExact(session);
+    }
+
+    private static void recordFastComparison(
+            PreparationSession session,
+            ExactRole role,
+            Site virtualSite,
+            ActualSiteResult result,
+            String reject
+    ) {
+        RoleAccuracy accuracy = session.accuracy.forRole(role);
+        if (reject.isEmpty()) accuracy.fastSuccesses++;
+        else if (result.site() != null) accuracy.terrainFallbacks++;
+        else accuracy.otherFallbacks++;
+        Site actualSite = result.site();
+        if (virtualSite == null || actualSite == null) return;
+
+        accuracy.comparisons++;
+        double scoreError = Math.abs(actualSite.score() - virtualSite.score());
+        accuracy.scoreAbsErrorSum += scoreError;
+        accuracy.scoreAbsErrorMax = Math.max(accuracy.scoreAbsErrorMax, scoreError);
+        TerrainAssessment virtualTerrain = virtualSite.terrain();
+        TerrainAssessment actualTerrain = actualSite.terrain();
+        double buriedError = Math.abs(actualTerrain.buriedFraction() - virtualTerrain.buriedFraction());
+        double floatingError = Math.abs(actualTerrain.floatingFraction() - virtualTerrain.floatingFraction());
+        double submergedError = Math.abs(actualTerrain.submergedFraction() - virtualTerrain.submergedFraction());
+        accuracy.fractionAbsErrorSum += buriedError + floatingError + submergedError;
+        accuracy.fractionAbsErrorMax = Math.max(
+                accuracy.fractionAbsErrorMax, Math.max(buriedError, Math.max(floatingError, submergedError))
+        );
+        double virtualMaxFraction = maxRejectFraction(virtualTerrain);
+        int bucket = accuracyBucket(virtualMaxFraction);
+        accuracy.strictBucketComparisons[bucket]++;
+        if (strictTerrainValid(actualSite)) accuracy.strictBucketPasses[bucket]++;
+
+        AfterTheEnd.LOGGER.debug(
+                "Altar virtual/exact accuracy city={} role={} virtualScore={} actualScore={} scoreError={} "
+                        + "virtualFractions=({},{},{}) actualFractions=({},{},{}) strictPass={} productionReject={}",
+                session.cityId, role == ExactRole.SMALL ? "small" : "large",
+                format(virtualSite.score()), format(actualSite.score()), format(scoreError),
+                percent(virtualTerrain.buriedFraction()), percent(virtualTerrain.floatingFraction()),
+                percent(virtualTerrain.submergedFraction()), percent(actualTerrain.buriedFraction()),
+                percent(actualTerrain.floatingFraction()), percent(actualTerrain.submergedFraction()),
+                strictTerrainValid(actualSite), reject.isEmpty() ? "none" : reject
+        );
+    }
+
+    private static boolean strictTerrainValid(Site site) {
+        TerrainAssessment terrain = site.terrain();
+        return terrain.buriedFraction() < EFFECTIVE_REJECT_LIMIT
+                && terrain.floatingFraction() < EFFECTIVE_REJECT_LIMIT
+                && terrain.submergedFraction() < EFFECTIVE_REJECT_LIMIT
+                && site.score() <= ACTUAL_ABSOLUTE_SCORE_LIMIT;
+    }
+
+    private static double maxRejectFraction(TerrainAssessment terrain) {
+        return Math.max(terrain.buriedFraction(), Math.max(terrain.floatingFraction(), terrain.submergedFraction()));
+    }
+
+    private static int accuracyBucket(double fraction) {
+        if (fraction < 0.10) return 0;
+        if (fraction < 0.15) return 1;
+        if (fraction < 0.20) return 2;
+        if (fraction < 0.25) return 3;
+        if (fraction < 0.30) return 4;
+        return 5;
+    }
+
+    private static void logAccuracy(PreparationSession session, String role, RoleAccuracy accuracy, int virtualAxisCount) {
+        AfterTheEnd.LOGGER.info(
+                "Altar virtual accuracy: city={}, role={}, virtualGrid={}x{}, exactGrid={}x{}, fastSuccess={}/{}, "
+                        + "structureFallbacks={}, terrainFallbacks={}, otherFallbacks={}, fullSearchRejects={}/{}, "
+                        + "comparisons={}, scoreMAE={}, scoreMax={}, fractionMAE={}, fractionMax={}, strictBuckets={}",
+                session.cityId, role, virtualAxisCount, virtualAxisCount,
+                DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT, DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT,
+                accuracy.fastSuccesses, accuracy.fastAttempts, accuracy.structureFallbacks, accuracy.terrainFallbacks,
+                accuracy.otherFallbacks, accuracy.fullSearchRejects, accuracy.fullSearchAttempts, accuracy.comparisons,
+                meanOrNa(accuracy.scoreAbsErrorSum, accuracy.comparisons),
+                accuracy.comparisons == 0 ? "n/a" : format(accuracy.scoreAbsErrorMax),
+                meanOrNa(accuracy.fractionAbsErrorSum, accuracy.comparisons * 3),
+                accuracy.comparisons == 0 ? "n/a" : percent(accuracy.fractionAbsErrorMax),
+                strictBucketSummary(accuracy)
+        );
+    }
+
+    private static String meanOrNa(double sum, int count) {
+        return count == 0 ? "n/a" : format(sum / count);
+    }
+
+    private static String strictBucketSummary(RoleAccuracy accuracy) {
+        String[] labels = {"<10", "10-15", "15-20", "20-25", "25-30", ">=30"};
+        StringBuilder builder = new StringBuilder("[");
+        for (int index = 0; index < labels.length; index++) {
+            if (index > 0) builder.append(',');
+            builder.append(labels[index]).append(':')
+                    .append(accuracy.strictBucketPasses[index]).append('/')
+                    .append(accuracy.strictBucketComparisons[index]);
+        }
+        return builder.append(']').toString();
     }
 
     private static void clearPendingExact(PreparationSession session) {
@@ -748,10 +886,10 @@ final class AltarPlacementPlanner {
         int[] supportYs = new int[FOOTPRINT_SAMPLE_COUNT];
         int[] fluidTopYs = new int[FOOTPRINT_SAMPLE_COUNT];
         int sampleIndex = 0;
-        for (int dxIndex = 0; dxIndex < 3; dxIndex++) {
-            int x = originX + footprintSampleOffset(size.width(), dxIndex);
-            for (int dzIndex = 0; dzIndex < 3; dzIndex++) {
-                int z = originZ + footprintSampleOffset(size.width(), dzIndex);
+        for (int dxIndex = 0; dxIndex < DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT; dxIndex++) {
+            int x = originX + footprintSampleOffset(size.width(), dxIndex, DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT);
+            for (int dzIndex = 0; dzIndex < DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT; dzIndex++) {
+                int z = originZ + footprintSampleOffset(size.width(), dzIndex, DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT);
                 SurfaceSample sample = cache.computeIfAbsent(
                         packXZ(x, z), ignored -> readVirtualSurfaceSample(level, generator, randomState, x, z, virtualSurfaceMode)
                 );
@@ -772,13 +910,15 @@ final class AltarPlacementPlanner {
             ChunkSeed chunk,
             TemplateSize size,
             SearchBounds bounds,
-            VirtualSurfaceMode virtualSurfaceMode
+            VirtualSurfaceMode virtualSurfaceMode,
+            int sampleAxisCount
     ) {
         List<Site> sites = evaluateTerrainSites(
                 level, chunk, size, bounds,
                 (x, z) -> cache.computeIfAbsent(
                         packXZ(x, z), ignored -> readVirtualSurfaceSample(level, generator, randomState, x, z, virtualSurfaceMode)
-                )
+                ),
+                sampleAxisCount
         );
         return sites.isEmpty() ? virtualPenaltySite(level, chunk, bounds) : sites.getFirst();
     }
@@ -811,10 +951,10 @@ final class AltarPlacementPlanner {
         int[] supportYs = new int[FOOTPRINT_SAMPLE_COUNT];
         int[] fluidTopYs = new int[FOOTPRINT_SAMPLE_COUNT];
         int sampleIndex = 0;
-        for (int dxIndex = 0; dxIndex < 3; dxIndex++) {
-            int x = originX + footprintSampleOffset(size.width(), dxIndex);
-            for (int dzIndex = 0; dzIndex < 3; dzIndex++) {
-                int z = originZ + footprintSampleOffset(size.width(), dzIndex);
+        for (int dxIndex = 0; dxIndex < DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT; dxIndex++) {
+            int x = originX + footprintSampleOffset(size.width(), dxIndex, DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT);
+            for (int dzIndex = 0; dzIndex < DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT; dzIndex++) {
+                int z = originZ + footprintSampleOffset(size.width(), dzIndex, DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT);
                 SurfaceSample sample = readActualSurfaceSample(level, x, z);
                 if (sample == null) return new ActualSiteResult(null, "no exact terrain sample at virtual center");
                 supportYs[sampleIndex] = sample.supportY();
@@ -829,7 +969,10 @@ final class AltarPlacementPlanner {
     }
 
     private static ActualSiteResult evaluateActualSite(ServerLevel level, ChunkSeed chunk, TemplateSize size, SearchBounds bounds) {
-        List<Site> sites = evaluateTerrainSites(level, chunk, size, bounds, (x, z) -> readActualSurfaceSample(level, x, z));
+        List<Site> sites = evaluateTerrainSites(
+                level, chunk, size, bounds, (x, z) -> readActualSurfaceSample(level, x, z),
+                DEFAULT_FOOTPRINT_SAMPLE_AXIS_COUNT
+        );
         if (sites.isEmpty()) return new ActualSiteResult(null, "no exact terrain samples");
         boolean structureCollision = false;
         boolean blockEntityCollision = false;
@@ -854,7 +997,8 @@ final class AltarPlacementPlanner {
             ChunkSeed chunk,
             TemplateSize size,
             SearchBounds bounds,
-            SurfaceReader reader
+            SurfaceReader reader,
+            int sampleAxisCount
     ) {
         int chunkMinX = chunk.chunkX() << 4;
         int chunkMinZ = chunk.chunkZ() << 4;
@@ -864,7 +1008,7 @@ final class AltarPlacementPlanner {
         int maxZ = Math.min(chunkMinZ + 15, bounds.maxCenterZ());
         if (minX > maxX || minZ > maxZ) return List.of();
         FootprintStencil footprint = footprintStencil(
-                minX - chunkMinX, maxX - chunkMinX, minZ - chunkMinZ, maxZ - chunkMinZ, size
+                minX - chunkMinX, maxX - chunkMinX, minZ - chunkMinZ, maxZ - chunkMinZ, size, sampleAxisCount
         );
         SurfaceSample[] surfaceSamples = new SurfaceSample[footprint.sampleXs().length];
         for (int sampleIndex = 0; sampleIndex < surfaceSamples.length; sampleIndex++) {
@@ -873,8 +1017,9 @@ final class AltarPlacementPlanner {
                     chunkMinZ + footprint.sampleZs()[sampleIndex]
             );
         }
-        int[] supportYs = new int[FOOTPRINT_SAMPLE_COUNT];
-        int[] fluidTopYs = new int[FOOTPRINT_SAMPLE_COUNT];
+        int sampleCount = sampleAxisCount * sampleAxisCount;
+        int[] supportYs = new int[sampleCount];
+        int[] fluidTopYs = new int[sampleCount];
         List<Site> sites = new ArrayList<>(footprint.centerXs().length);
         for (int centerIndex = 0; centerIndex < footprint.centerXs().length; centerIndex++) {
             TerrainAssessment terrain = assessTerrain(footprint, surfaceSamples, centerIndex, supportYs, fluidTopYs);
@@ -1286,10 +1431,11 @@ final class AltarPlacementPlanner {
             int maxLocalX,
             int minLocalZ,
             int maxLocalZ,
-            TemplateSize size
+            TemplateSize size,
+            int sampleAxisCount
     ) {
         FootprintStencilKey key = new FootprintStencilKey(
-                minLocalX, maxLocalX, minLocalZ, maxLocalZ, size.width()
+                minLocalX, maxLocalX, minLocalZ, maxLocalZ, size.width(), sampleAxisCount
         );
         return FOOTPRINT_STENCILS.computeIfAbsent(key, AltarPlacementPlanner::buildFootprintStencil);
     }
@@ -1298,7 +1444,8 @@ final class AltarPlacementPlanner {
         int[] xs = sampledAxis(key.minLocalX(), key.maxLocalX());
         int[] zs = sampledAxis(key.minLocalZ(), key.maxLocalZ());
         int totalCenters = xs.length * zs.length;
-        int maximumSamples = totalCenters * FOOTPRINT_SAMPLE_COUNT;
+        int samplesPerCenter = key.sampleAxisCount() * key.sampleAxisCount();
+        int maximumSamples = totalCenters * samplesPerCenter;
         int[] centerXs = new int[totalCenters];
         int[] centerZs = new int[totalCenters];
         int[] sampleXs = new int[maximumSamples];
@@ -1313,12 +1460,12 @@ final class AltarPlacementPlanner {
                 centerZs[centerIndex] = centerZ;
                 int originX = centerX - half;
                 int originZ = centerZ - half;
-                int centerSampleBase = centerIndex * FOOTPRINT_SAMPLE_COUNT;
+                int centerSampleBase = centerIndex * samplesPerCenter;
                 int centerSampleOffset = 0;
-                for (int dxIndex = 0; dxIndex < 3; dxIndex++) {
-                    int sampleX = originX + footprintSampleOffset(key.width(), dxIndex);
-                    for (int dzIndex = 0; dzIndex < 3; dzIndex++) {
-                        int sampleZ = originZ + footprintSampleOffset(key.width(), dzIndex);
+                for (int dxIndex = 0; dxIndex < key.sampleAxisCount(); dxIndex++) {
+                    int sampleX = originX + footprintSampleOffset(key.width(), dxIndex, key.sampleAxisCount());
+                    for (int dzIndex = 0; dzIndex < key.sampleAxisCount(); dzIndex++) {
+                        int sampleZ = originZ + footprintSampleOffset(key.width(), dzIndex, key.sampleAxisCount());
                         int sampleIndex = findSampleIndex(sampleXs, sampleZs, uniqueSamples, sampleX, sampleZ);
                         if (sampleIndex < 0) {
                             sampleIndex = uniqueSamples++;
@@ -1344,10 +1491,13 @@ final class AltarPlacementPlanner {
         return -1;
     }
 
-    private static int footprintSampleOffset(int width, int index) {
-        if (index == 0) return 0;
-        if (index == 1) return width / 2;
-        return width - 1;
+    private static int footprintSampleOffset(int width, int index, int sampleAxisCount) {
+        if (sampleAxisCount < 2) return width / 2;
+        double position = (width - 1.0) * index / (sampleAxisCount - 1.0);
+        int midpoint = sampleAxisCount - 1;
+        if (index * 2 < midpoint) return (int) Math.floor(position);
+        if (index * 2 > midpoint) return (int) Math.ceil(position);
+        return (int) Math.round(position);
     }
 
     private static TerrainAssessment assessTerrain(
@@ -1357,8 +1507,9 @@ final class AltarPlacementPlanner {
             int[] supportYs,
             int[] fluidTopYs
     ) {
-        int sampleBase = centerIndex * FOOTPRINT_SAMPLE_COUNT;
-        for (int sampleOffset = 0; sampleOffset < FOOTPRINT_SAMPLE_COUNT; sampleOffset++) {
+        int sampleCount = supportYs.length;
+        int sampleBase = centerIndex * sampleCount;
+        for (int sampleOffset = 0; sampleOffset < sampleCount; sampleOffset++) {
             SurfaceSample sample = surfaceSamples[footprint.sampleIndices()[sampleBase + sampleOffset]];
             if (sample == null) return null;
             supportYs[sampleOffset] = sample.supportY();
@@ -1576,6 +1727,7 @@ final class AltarPlacementPlanner {
         private final List<ChunkSeed> reserveChunks;
         private final VirtualSurfaceMode virtualSurfaceMode;
         private final double targetDistance;
+        private final AccuracyMetrics accuracy = new AccuracyMetrics();
         private int optimizationRound;
         private int exactEvaluations;
         private boolean degradedMode;
@@ -1645,6 +1797,10 @@ final class AltarPlacementPlanner {
         private boolean smallFullStructurePrechecked;
         private boolean largeFastStructurePrechecked;
         private boolean largeFullStructurePrechecked;
+        private boolean smallFastAttemptCounted;
+        private boolean smallFullSearchAttemptCounted;
+        private boolean largeFastAttemptCounted;
+        private boolean largeFullSearchAttemptCounted;
         private Site exactSmall;
         private Site exactLarge;
         private String smallReject = "";
@@ -1666,6 +1822,32 @@ final class AltarPlacementPlanner {
         }
     }
 
+    private static final class AccuracyMetrics {
+        private final RoleAccuracy small = new RoleAccuracy();
+        private final RoleAccuracy large = new RoleAccuracy();
+
+        private RoleAccuracy forRole(ExactRole role) {
+            return role == ExactRole.SMALL ? small : large;
+        }
+    }
+
+    private static final class RoleAccuracy {
+        private int fastAttempts;
+        private int fastSuccesses;
+        private int structureFallbacks;
+        private int terrainFallbacks;
+        private int otherFallbacks;
+        private int fullSearchAttempts;
+        private int fullSearchRejects;
+        private int comparisons;
+        private double scoreAbsErrorSum;
+        private double scoreAbsErrorMax;
+        private double fractionAbsErrorSum;
+        private double fractionAbsErrorMax;
+        private final int[] strictBucketComparisons = new int[6];
+        private final int[] strictBucketPasses = new int[6];
+    }
+
     private enum ExactRole { SMALL, LARGE }
     private enum ExactMode { FAST_CENTER, FULL_SEARCH }
     private enum VirtualSurfaceMode { LEGACY_HEIGHTS, BASE_COLUMN }
@@ -1679,7 +1861,8 @@ final class AltarPlacementPlanner {
     private record ChunkSeed(int sampleIndex, int chunkX, int chunkZ) { }
     private record SurfaceSample(int supportY, int fluidTopY) { }
     private record VirtualSiteEvaluation(int candidateIndex, Site site, double seconds) { }
-    private record FootprintStencilKey(int minLocalX, int maxLocalX, int minLocalZ, int maxLocalZ, int width) { }
+    private record FootprintStencilKey(int minLocalX, int maxLocalX, int minLocalZ, int maxLocalZ, int width,
+                                       int sampleAxisCount) { }
     private record FootprintStencil(int[] centerXs, int[] centerZs, int[] sampleXs, int[] sampleZs, int[] sampleIndices) { }
     private record TerrainAssessment(int targetSurfaceY, double score, double roughness, double buriedFraction,
                                      double floatingFraction, double submergedFraction) { }
