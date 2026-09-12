@@ -128,20 +128,32 @@ public final class AltarRitualHandler {
         player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.altar.cannot_activate"));
     }
 
+    static boolean canActivate(int activatedCount, int unlockedCityCount, int maxCityCount) {
+        if (activatedCount >= MAX_ACTIVATED_ALTARS_PER_CITY) return false;
+        return activatedCount > 0 || unlockedCityCount < maxCityCount;
+    }
+
+    static boolean unlocksCity(int activatedCount, int unlockedCityCount, int maxCityCount) {
+        return activatedCount == 0 && canActivate(activatedCount, unlockedCityCount, maxCityCount);
+    }
+
     private static boolean canActivateAltar(MinecraftServer server, UUID cityId) {
-        int activated = AltarManager.getActivatedCount(server, cityId);
-        if (activated >= MAX_ACTIVATED_ALTARS_PER_CITY) return false;
-        return activated > 0 || CityManager.getAccessibleCities(server).size() < CityManager.getMaxCityCount(server);
+        return canActivate(
+                AltarManager.getActivatedCount(server, cityId),
+                CityManager.getAccessibleCities(server).size(),
+                CityManager.getMaxCityCount(server)
+        );
     }
 
     private static void tryStartRitual(MinecraftServer server, ServerLevel level) {
+        int unlockedCityCount = CityManager.getAccessibleCities(server).size();
+        int maxCityCount = CityManager.getMaxCityCount(server);
         for (City city : CityManager.getAccessibleCities(server)) {
             int activatedCount = AltarManager.getActivatedCount(server, city.id());
-            if (activatedCount >= MAX_ACTIVATED_ALTARS_PER_CITY) continue;
-            if (!canActivateAltar(server, city.id())) continue;
+            if (!canActivate(activatedCount, unlockedCityCount, maxCityCount)) continue;
 
             UUID targetCityId = null;
-            if (activatedCount == 0) {
+            if (unlocksCity(activatedCount, unlockedCityCount, maxCityCount)) {
                 City targetCity = CityManager.getNextLockedCity(server);
                 if (targetCity == null) continue;
                 targetCityId = targetCity.id();
@@ -226,18 +238,18 @@ public final class AltarRitualHandler {
         }
 
         int activatedCount = AltarManager.getActivatedCount(server, sequence.cityId);
-        if (activatedCount >= MAX_ACTIVATED_ALTARS_PER_CITY) {
-            cancel(server, level, sequence, "city already has the maximum number of activated Altars");
-            return;
-        }
         if (!canActivateAltar(server, sequence.cityId)) {
             cancel(server, level, sequence, "Altar activation is no longer allowed");
             return;
         }
 
-        boolean firstActivation = activatedCount == 0;
+        boolean shouldUnlockCity = unlocksCity(
+                activatedCount,
+                CityManager.getAccessibleCities(server).size(),
+                CityManager.getMaxCityCount(server)
+        );
         boolean unlocksCity = sequence.targetCityId != null;
-        if (firstActivation != unlocksCity) {
+        if (shouldUnlockCity != unlocksCity) {
             cancel(server, level, sequence, "Altar activation order changed");
             return;
         }
