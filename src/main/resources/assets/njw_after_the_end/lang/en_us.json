@@ -20,6 +20,7 @@
   "message.njw_after_the_end.interaction.blocked": "You cannot interact outside the unlocked city area.",
   "message.njw_after_the_end.ender_eye.no_stronghold": "No accessible stronghold was found in this city.",
   "message.njw_after_the_end.city_load.in_progress": "City chunks are being loaded. Please reconnect after loading has finished.",
+  "message.njw_after_the_end.altar.cannot_activate": "No more Altars can be activated.",
 
   "message.njw_after_the_end.city_move.already_casting": "City Move is already being cast.",
   "message.njw_after_the_end.city_move.cooldown": "City Move is on cooldown. %s seconds remaining.",
