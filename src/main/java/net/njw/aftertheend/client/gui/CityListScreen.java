@@ -1,6 +1,7 @@
 package net.njw.aftertheend.client.gui;
 
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -8,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.njw.aftertheend.city.CityRegion;
+import net.njw.aftertheend.city.altar.AltarTravelAccess;
 import net.njw.aftertheend.client.ClientCityManager;
 import net.njw.aftertheend.network.CityTeleportRequestPayload;
 
@@ -167,7 +169,7 @@ public final class CityListScreen extends Screen {
         int buttonX = left + (CONTENT_WIDTH - totalWidth) / 2;
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity city = getSelectedCity();
-        boolean moveEnabled = city != null && city.unlocked();
+        boolean moveEnabled = city != null && city.unlocked() && isNearActivatedAltar();
         drawButton(graphics, buttonX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.move"), moveEnabled, isInside(mouseX, mouseY, buttonX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
         int closeX = buttonX + BUTTON_WIDTH + BUTTON_GAP;
         drawButton(graphics, closeX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.close"), true, isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
@@ -204,7 +206,8 @@ public final class CityListScreen extends Screen {
         int moveX = left + (CONTENT_WIDTH - totalWidth) / 2;
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity selectedCity = getSelectedCity();
-        if (selectedCity != null && selectedCity.unlocked() && isInside(click.x(), click.y(), moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        if (selectedCity != null && selectedCity.unlocked() && isNearActivatedAltar()
+                && isInside(click.x(), click.y(), moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             ClientPacketDistributor.sendToServer(new CityTeleportRequestPayload(selectedCity.id()));
             onClose();
             return true;
@@ -242,8 +245,23 @@ public final class CityListScreen extends Screen {
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         int closeX = moveX + BUTTON_WIDTH + BUTTON_GAP;
         ClientCityManager.ClientCity city = getSelectedCity();
-        return city != null && city.unlocked() && isInside(mouseX, mouseY, moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
+        return city != null && city.unlocked() && isNearActivatedAltar()
+                && isInside(mouseX, mouseY, moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
                 || isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+    }
+
+    private boolean isNearActivatedAltar() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.level == null || !minecraft.level.dimension().equals(Level.OVERWORLD)) return false;
+        double x = minecraft.player.getX();
+        double y = minecraft.player.getY();
+        double z = minecraft.player.getZ();
+        for (ClientCityManager.ClientCity city : ClientCityManager.getAccessibleCities()) {
+            for (ClientCityManager.ClientAltar altar : city.activatedAltars()) {
+                if (AltarTravelAccess.isNear(x, y, z, altar.blockX(), altar.y(), altar.blockZ(), altar.large())) return true;
+            }
+        }
+        return false;
     }
 
     private ClientCityManager.ClientCity getSelectedCity() {
