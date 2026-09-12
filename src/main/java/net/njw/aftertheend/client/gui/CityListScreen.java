@@ -1,8 +1,11 @@
 package net.njw.aftertheend.client.gui;
 
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
+import java.util.List;
+import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -11,9 +14,8 @@ import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.njw.aftertheend.city.CityRegion;
 import net.njw.aftertheend.city.altar.AltarTravelAccess;
 import net.njw.aftertheend.client.ClientCityManager;
+import net.njw.aftertheend.network.CityRenameRequestPayload;
 import net.njw.aftertheend.network.CityTeleportRequestPayload;
-
-import java.util.List;
 
 public final class CityListScreen extends Screen {
     private static final int CONTENT_WIDTH = 332;
@@ -26,6 +28,7 @@ public final class CityListScreen extends Screen {
     private static final int BUTTON_HEIGHT = 18;
     private static final int BUTTON_GAP = 8;
     private static final int NAME_EDGE_PADDING = 2;
+    private static final int NAME_EDIT_HEIGHT = 16;
     private static final long MARQUEE_START_PAUSE_MS = 700L;
     private static final long MARQUEE_END_PAUSE_MS = 2000L;
     private static final float MARQUEE_SPEED_PIXELS_PER_SECOND = 24.0F;
@@ -43,9 +46,31 @@ public final class CityListScreen extends Screen {
     private int selectedIndex;
     private int scrollOffset;
     private long selectedSinceMs = System.currentTimeMillis();
+    private UUID editingCityId;
+    private EditBox nameEditBox;
 
     public CityListScreen() {
         super(Component.translatable("gui.njw_after_the_end.city_list.title"));
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+        int detailLeft = left() + LIST_WIDTH + COLUMN_GAP;
+        int listTop = top() + 34;
+        int detailWidth = CONTENT_WIDTH - LIST_WIDTH - COLUMN_GAP;
+        nameEditBox = new EditBox(
+                font, detailLeft, listTop - 4, detailWidth, NAME_EDIT_HEIGHT,
+                Component.translatable("gui.njw_after_the_end.city_list.edit_name")
+        );
+        nameEditBox.setMaxLength(CityRenameRequestPayload.MAX_NAME_LENGTH);
+        nameEditBox.visible = false;
+        addRenderableWidget(nameEditBox);
+        if (editingCityId != null) {
+            ClientCityManager.ClientCity city = getSelectedCity();
+            if (city != null && city.id().equals(editingCityId)) beginEditing(city);
+            else editingCityId = null;
+        }
     }
 
     @Override
@@ -94,7 +119,7 @@ public final class CityListScreen extends Screen {
         }
 
         int detailWidth = CONTENT_WIDTH - LIST_WIDTH - COLUMN_GAP;
-        renderCityName(graphics, city.name(), x, y, detailWidth, TEXT_COLOR, true);
+        if (!isEditing(city)) renderCityName(graphics, city.name(), x, y, detailWidth, TEXT_COLOR, true);
         Component status = Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked");
         graphics.text(font, status, x, y + 14, city.unlocked() ? UNLOCKED_COLOR : LOCKED_COLOR, false);
 
@@ -169,10 +194,16 @@ public final class CityListScreen extends Screen {
         int buttonX = left + (CONTENT_WIDTH - totalWidth) / 2;
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity city = getSelectedCity();
-        boolean moveEnabled = city != null && city.unlocked() && isNearActivatedAltar();
-        drawButton(graphics, buttonX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.move"), moveEnabled, isInside(mouseX, mouseY, buttonX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
+        boolean editing = city != null && isEditing(city);
+        boolean primaryEnabled = editing ? isValidEditedName() : city != null && city.unlocked() && isNearActivatedAltar();
+        Component primaryLabel = Component.translatable(editing
+                ? "gui.njw_after_the_end.city_list.save"
+                : "gui.njw_after_the_end.city_list.move");
+        drawButton(graphics, buttonX, buttonY, primaryLabel, primaryEnabled,
+                isInside(mouseX, mouseY, buttonX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
         int closeX = buttonX + BUTTON_WIDTH + BUTTON_GAP;
-        drawButton(graphics, closeX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.close"), true, isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
+        drawButton(graphics, closeX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.close"), true,
+                isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
     }
 
     private void drawButton(GuiGraphicsExtractor graphics, int x, int y, Component label, boolean enabled, boolean hovered) {
@@ -187,6 +218,8 @@ public final class CityListScreen extends Screen {
         int left = left();
         int top = top();
         int listTop = top + 34;
+        int detailLeft = left + LIST_WIDTH + COLUMN_GAP;
+        int detailWidth = CONTENT_WIDTH - LIST_WIDTH - COLUMN_GAP;
         List<ClientCityManager.ClientCity> cities = ClientCityManager.getCities();
         int endIndex = Math.min(cities.size(), scrollOffset + VISIBLE_CITY_COUNT);
 
@@ -195,6 +228,7 @@ public final class CityListScreen extends Screen {
             int y = listTop + row * ROW_HEIGHT;
             if (isInside(click.x(), click.y(), left, y - 3, LIST_WIDTH, ROW_HEIGHT)) {
                 if (selectedIndex != index) {
+                    stopEditing();
                     selectedIndex = index;
                     selectedSinceMs = System.currentTimeMillis();
                 }
@@ -202,18 +236,29 @@ public final class CityListScreen extends Screen {
             }
         }
 
-        int totalWidth = BUTTON_WIDTH * 2 + BUTTON_GAP;
-        int moveX = left + (CONTENT_WIDTH - totalWidth) / 2;
-        int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity selectedCity = getSelectedCity();
-        if (selectedCity != null && selectedCity.unlocked() && isNearActivatedAltar()
-                && isInside(click.x(), click.y(), moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
-            ClientPacketDistributor.sendToServer(new CityTeleportRequestPayload(selectedCity.id()));
-            onClose();
+        if (selectedCity != null && doubled && !isEditing(selectedCity)
+                && isInside(click.x(), click.y(), detailLeft, listTop - 4, detailWidth, NAME_EDIT_HEIGHT)) {
+            beginEditing(selectedCity);
             return true;
         }
 
-        int closeX = moveX + BUTTON_WIDTH + BUTTON_GAP;
+        int totalWidth = BUTTON_WIDTH * 2 + BUTTON_GAP;
+        int primaryX = left + (CONTENT_WIDTH - totalWidth) / 2;
+        int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
+        if (selectedCity != null && isInside(click.x(), click.y(), primaryX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+            if (isEditing(selectedCity)) {
+                if (isValidEditedName()) saveEditedName(selectedCity);
+                return true;
+            }
+            if (selectedCity.unlocked() && isNearActivatedAltar()) {
+                ClientPacketDistributor.sendToServer(new CityTeleportRequestPayload(selectedCity.id()));
+                onClose();
+                return true;
+            }
+        }
+
+        int closeX = primaryX + BUTTON_WIDTH + BUTTON_GAP;
         if (isInside(click.x(), click.y(), closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             onClose();
             return true;
@@ -234,19 +279,59 @@ public final class CityListScreen extends Screen {
         return true;
     }
 
+    private void beginEditing(ClientCityManager.ClientCity city) {
+        if (nameEditBox == null) return;
+        editingCityId = city.id();
+        nameEditBox.setValue(city.name());
+        nameEditBox.visible = true;
+        nameEditBox.setFocused(true);
+        setFocused(nameEditBox);
+    }
+
+    private void stopEditing() {
+        editingCityId = null;
+        if (nameEditBox != null) {
+            nameEditBox.setFocused(false);
+            nameEditBox.visible = false;
+        }
+        setFocused(null);
+    }
+
+    private void saveEditedName(ClientCityManager.ClientCity city) {
+        String name = nameEditBox.getValue().strip();
+        ClientPacketDistributor.sendToServer(new CityRenameRequestPayload(city.id(), name));
+        stopEditing();
+        selectedSinceMs = System.currentTimeMillis();
+    }
+
+    private boolean isEditing(ClientCityManager.ClientCity city) {
+        return editingCityId != null && editingCityId.equals(city.id()) && nameEditBox != null && nameEditBox.visible;
+    }
+
+    private boolean isValidEditedName() {
+        if (nameEditBox == null) return false;
+        String name = nameEditBox.getValue().strip();
+        return !name.isBlank() && name.length() <= CityRenameRequestPayload.MAX_NAME_LENGTH
+                && name.codePoints().noneMatch(Character::isISOControl);
+    }
+
     private boolean isInteractive(double mouseX, double mouseY, int left, int listTop, int top) {
         int endIndex = Math.min(ClientCityManager.getCities().size(), scrollOffset + VISIBLE_CITY_COUNT);
         for (int index = scrollOffset; index < endIndex; index++) {
             int y = listTop + (index - scrollOffset) * ROW_HEIGHT;
             if (isInside(mouseX, mouseY, left, y - 3, LIST_WIDTH, ROW_HEIGHT)) return true;
         }
-        int totalWidth = BUTTON_WIDTH * 2 + BUTTON_GAP;
-        int moveX = left + (CONTENT_WIDTH - totalWidth) / 2;
-        int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
-        int closeX = moveX + BUTTON_WIDTH + BUTTON_GAP;
         ClientCityManager.ClientCity city = getSelectedCity();
-        return city != null && city.unlocked() && isNearActivatedAltar()
-                && isInside(mouseX, mouseY, moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
+        int detailLeft = left + LIST_WIDTH + COLUMN_GAP;
+        int detailWidth = CONTENT_WIDTH - LIST_WIDTH - COLUMN_GAP;
+        if (city != null && !isEditing(city)
+                && isInside(mouseX, mouseY, detailLeft, listTop - 4, detailWidth, NAME_EDIT_HEIGHT)) return true;
+        int totalWidth = BUTTON_WIDTH * 2 + BUTTON_GAP;
+        int primaryX = left + (CONTENT_WIDTH - totalWidth) / 2;
+        int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
+        int closeX = primaryX + BUTTON_WIDTH + BUTTON_GAP;
+        boolean primaryEnabled = city != null && (isEditing(city) ? isValidEditedName() : city.unlocked() && isNearActivatedAltar());
+        return primaryEnabled && isInside(mouseX, mouseY, primaryX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
                 || isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
     }
 
@@ -275,15 +360,19 @@ public final class CityListScreen extends Screen {
         if (cities.isEmpty()) {
             selectedIndex = 0;
             scrollOffset = 0;
+            stopEditing();
             return;
         }
         selectedIndex = Math.max(0, Math.min(selectedIndex, cities.size() - 1));
         scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, cities.size() - VISIBLE_CITY_COUNT)));
         if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
         if (selectedIndex >= scrollOffset + VISIBLE_CITY_COUNT) scrollOffset = selectedIndex - VISIBLE_CITY_COUNT + 1;
+        if (editingCityId != null && !cities.get(selectedIndex).id().equals(editingCityId)) stopEditing();
     }
 
     private int left() { return (width - CONTENT_WIDTH) / 2; }
     private int top() { return Math.max(24, height / 2 - CONTENT_HEIGHT / 2); }
-    private static boolean isInside(double mouseX, double mouseY, int x, int y, int width, int height) { return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height; }
+    private static boolean isInside(double mouseX, double mouseY, int x, int y, int width, int height) {
+        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
+    }
 }
