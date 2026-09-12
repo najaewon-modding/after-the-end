@@ -4,7 +4,9 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.context.ContextKey;
@@ -22,6 +24,7 @@ public final class ActivatedAltarClientEffects {
     private static final double RENDER_DISTANCE = 160.0;
     private static final double PARTICLE_DISTANCE = 64.0;
     private static final int PARTICLE_INTERVAL_TICKS = 30;
+    private static final int FULL_BRIGHT = 0xF000F0;
     private static final int GOLD_RED = 232;
     private static final int GOLD_GREEN = 198;
     private static final int GOLD_BLUE = 106;
@@ -31,6 +34,8 @@ public final class ActivatedAltarClientEffects {
     private static final int MUTED_RED = 185;
     private static final int MUTED_GREEN = 154;
     private static final int MUTED_BLUE = 82;
+    private static final Identifier WHITE_TEXTURE = Identifier.withDefaultNamespace("textures/block/white_concrete.png");
+    private static final RenderType ECHO_RENDER_TYPE = RenderTypes.entityTranslucent(WHITE_TEXTURE, false);
     private static final DustParticleOptions GOLD_DUST = new DustParticleOptions(0xFFE7A3, 1.0F);
     private static final ContextKey<List<AltarEcho>> ECHOES_KEY = new ContextKey<>(
             Identifier.fromNamespaceAndPath(AfterTheEnd.MODID, "activated_altar_echoes"));
@@ -99,7 +104,7 @@ public final class ActivatedAltarClientEffects {
         for (AltarEcho echo : echoes) {
             event.getSubmitNodeCollector().submitCustomGeometry(
                     poseStack,
-                    RenderTypes.debugQuads(),
+                    ECHO_RENDER_TYPE,
                     (pose, consumer) -> renderEcho(pose, consumer, echo)
             );
         }
@@ -111,9 +116,10 @@ public final class ActivatedAltarClientEffects {
         double floorY = echo.y() + 0.035;
         double outerPhase = echo.gameTime() * 0.0145 + echo.x() * 0.003 + echo.z() * 0.002;
         double innerPhase = -echo.gameTime() * 0.0085 + echo.x() * 0.0015 - echo.z() * 0.001;
+        double sealPhase = echo.gameTime() * 0.0032 + echo.x() * 0.0011 - echo.z() * 0.0013;
 
-        renderBrokenRing(pose, consumer, echo.x(), floorY, echo.z(), radius, 0.105,
-                echo.large() ? 16 : 12, 0.60, 3, outerPhase, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 188);
+        renderRing(pose, consumer, echo.x(), floorY, echo.z(), radius, 0.105, 64,
+                GOLD_RED, GOLD_GREEN, GOLD_BLUE, 200);
         renderBrokenRing(pose, consumer, echo.x(), floorY + 0.004, echo.z(), radius * 0.76, 0.055,
                 echo.large() ? 12 : 8, 0.46, 2, innerPhase, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 118);
         if (echo.large()) {
@@ -121,11 +127,22 @@ public final class ActivatedAltarClientEffects {
                     16, 0.38, 2, -outerPhase * 0.45, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 92);
         }
 
-        renderCardinalSigils(pose, consumer, echo.x(), floorY + 0.010, echo.z(), radius, echo.large());
-        renderInnerSeal(pose, consumer, echo.x(), floorY + 0.014, echo.z(), radius, echo.large());
+        renderCardinalSigils(pose, consumer, echo.x(), floorY + 0.010, echo.z(), radius, echo.large(), sealPhase);
+        renderInnerSeal(pose, consumer, echo.x(), floorY + 0.014, echo.z(), radius, echo.large(), sealPhase);
 
         double bob = Math.sin(echo.gameTime() * 0.12 + echo.x() * 0.05 + echo.z() * 0.04) * 0.08;
         renderCore(pose, consumer, echo.x(), echo.y() + 1.05 + bob, echo.z(), echo.gameTime());
+    }
+
+    private static void renderRing(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                   double radius, double thickness, int segments,
+                                   int red, int green, int blue, int alpha) {
+        for (int i = 0; i < segments; i++) {
+            double a1 = Math.PI * 2.0 * i / segments;
+            double a2 = Math.PI * 2.0 * (i + 1) / segments;
+            addRingSegment(pose, consumer, x, y, z, radius, radius - thickness, a1, a2,
+                    red, green, blue, alpha);
+        }
     }
 
     private static void renderBrokenRing(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
@@ -146,7 +163,7 @@ public final class ActivatedAltarClientEffects {
     }
 
     private static void renderCardinalSigils(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                              double radius, boolean large) {
+                                              double radius, boolean large, double phase) {
         double socketRadius = radius * 0.78;
         double lineStart = radius * 0.28;
         double lineEnd = socketRadius - radius * 0.13;
@@ -155,7 +172,7 @@ public final class ActivatedAltarClientEffects {
         double diamondInner = diamondOuter * 0.52;
 
         for (int i = 0; i < 4; i++) {
-            double angle = i * Math.PI * 0.5;
+            double angle = phase + i * Math.PI * 0.5;
             double cos = Math.cos(angle);
             double sin = Math.sin(angle);
             renderLineXZ(pose, consumer,
@@ -178,18 +195,18 @@ public final class ActivatedAltarClientEffects {
     }
 
     private static void renderInnerSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                        double radius, boolean large) {
-        renderPolygonOutline(pose, consumer, x, y, z, radius * 0.43, 8, Math.PI / 8.0,
+                                        double radius, boolean large, double phase) {
+        renderPolygonOutline(pose, consumer, x, y, z, radius * 0.43, 8, phase + Math.PI / 8.0,
                 0.045, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 148);
-        renderPolygonOutline(pose, consumer, x, y + 0.003, z, radius * 0.31, 4, Math.PI / 4.0,
+        renderPolygonOutline(pose, consumer, x, y + 0.003, z, radius * 0.31, 4, phase + Math.PI / 4.0,
                 0.052, PALE_RED, PALE_GREEN, PALE_BLUE, 192);
-        renderPolygonOutline(pose, consumer, x, y + 0.006, z, radius * 0.22, 4, 0.0,
+        renderPolygonOutline(pose, consumer, x, y + 0.006, z, radius * 0.22, 4, phase,
                 0.040, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 136);
 
         double spokeStart = radius * 0.08;
         double spokeEnd = radius * 0.22;
         for (int i = 0; i < 4; i++) {
-            double angle = Math.PI * 0.25 + i * Math.PI * 0.5;
+            double angle = phase + Math.PI * 0.25 + i * Math.PI * 0.5;
             double cos = Math.cos(angle);
             double sin = Math.sin(angle);
             renderLineXZ(pose, consumer,
@@ -199,7 +216,7 @@ public final class ActivatedAltarClientEffects {
         }
 
         if (large) {
-            renderPolygonOutline(pose, consumer, x, y + 0.009, z, radius * 0.52, 4, Math.PI / 4.0,
+            renderPolygonOutline(pose, consumer, x, y + 0.009, z, radius * 0.52, 4, phase + Math.PI / 4.0,
                     0.030, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 88);
         }
     }
@@ -280,8 +297,8 @@ public final class ActivatedAltarClientEffects {
         addDoubleSidedTriangle(pose, consumer, bottom, north, west, MUTED_RED, MUTED_GREEN, MUTED_BLUE, 225);
         addDoubleSidedTriangle(pose, consumer, bottom, east, north, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 232);
 
-        renderBrokenRing(pose, consumer, x, y, z, horizontal * 1.95, horizontal * 0.14,
-                8, 0.52, 2, -gameTime * 0.026, PALE_RED, PALE_GREEN, PALE_BLUE, 112);
+        renderRing(pose, consumer, x, y, z, horizontal * 1.95, horizontal * 0.14, 32,
+                PALE_RED, PALE_GREEN, PALE_BLUE, 128);
     }
 
     private static void addDoubleSidedTriangle(PoseStack.Pose pose, VertexConsumer consumer, Point a, Point b, Point c,
@@ -304,10 +321,20 @@ public final class ActivatedAltarClientEffects {
                                 double x1, double y1, double z1, double x2, double y2, double z2,
                                 double x3, double y3, double z3, double x4, double y4, double z4,
                                 int red, int green, int blue, int alpha) {
-        consumer.addVertex(pose, (float) x1, (float) y1, (float) z1).setColor(red, green, blue, alpha);
-        consumer.addVertex(pose, (float) x2, (float) y2, (float) z2).setColor(red, green, blue, alpha);
-        consumer.addVertex(pose, (float) x3, (float) y3, (float) z3).setColor(red, green, blue, alpha);
-        consumer.addVertex(pose, (float) x4, (float) y4, (float) z4).setColor(red, green, blue, alpha);
+        addVertex(pose, consumer, x1, y1, z1, red, green, blue, alpha);
+        addVertex(pose, consumer, x2, y2, z2, red, green, blue, alpha);
+        addVertex(pose, consumer, x3, y3, z3, red, green, blue, alpha);
+        addVertex(pose, consumer, x4, y4, z4, red, green, blue, alpha);
+    }
+
+    private static void addVertex(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                  int red, int green, int blue, int alpha) {
+        consumer.addVertex(pose, (float)x, (float)y, (float)z)
+                .setColor(red, green, blue, alpha)
+                .setUv(0.5F, 0.5F)
+                .setOverlay(OverlayTexture.NO_OVERLAY)
+                .setLight(FULL_BRIGHT)
+                .setNormal(pose, 0.0F, 1.0F, 0.0F);
     }
 
     private record Point(double x, double y, double z) { }
