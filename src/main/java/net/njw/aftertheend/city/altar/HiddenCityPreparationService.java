@@ -19,6 +19,7 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.city.City;
+import net.njw.aftertheend.city.CityLifecycleService;
 import net.njw.aftertheend.city.CityManager;
 
 public final class HiddenCityPreparationService {
@@ -45,13 +46,21 @@ public final class HiddenCityPreparationService {
     private HiddenCityPreparationService() { }
 
     public static void refreshQueue(MinecraftServer server) {
+        int target = CityLifecycleService.getLockedCityReserveTarget(server);
+        List<City> reserveCities = CityManager.getLockedCities(server).stream().limit(target).toList();
+        Set<UUID> reserveIds = new HashSet<>();
+        for (City city : reserveCities) reserveIds.add(city.id());
+
+        if (activeCityId != null && !reserveIds.contains(activeCityId)) resetActive(true);
+
         QUEUE.removeIf(cityId -> {
             City city = CityManager.getCity(server, cityId);
-            boolean remove = city == null || CityManager.isCityAccessible(server, cityId) || AltarManager.isGenerated(server, cityId);
+            boolean remove = !reserveIds.contains(cityId) || city == null
+                    || CityManager.isCityAccessible(server, cityId) || AltarManager.isGenerated(server, cityId);
             if (remove) QUEUED.remove(cityId);
             return remove;
         });
-        for (City city : CityManager.getLockedCities(server)) {
+        for (City city : reserveCities) {
             UUID cityId = city.id();
             if (AltarManager.isGenerated(server, cityId)) continue;
             if (FAILED_THIS_SESSION.contains(cityId)) continue;
