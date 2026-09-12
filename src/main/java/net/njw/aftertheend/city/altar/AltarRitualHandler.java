@@ -12,6 +12,7 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Display;
@@ -160,7 +161,9 @@ public final class AltarRitualHandler {
         BlockState eggState = level.getBlockState(site.geometry().center());
         if (!(eggState.getBlock() instanceof RecordedDragonEggBlock)) return;
         eggState.attack(level, site.geometry().center(), player);
-        player.displayClientMessage(Component.translatable("message.njw_after_the_end.altar.cannot_activate"), true);
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.sendOverlayMessage(Component.translatable("message.njw_after_the_end.altar.cannot_activate"));
+        }
     }
 
     static boolean canActivate(int activatedCount, int unlockedCityCount, int maxCityCount) {
