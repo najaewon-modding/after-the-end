@@ -62,8 +62,7 @@ public final class HiddenCityPreparationService {
         });
         for (City city : reserveCities) {
             UUID cityId = city.id();
-            if (AltarManager.isGenerated(server, cityId)) continue;
-            if (FAILED_THIS_SESSION.contains(cityId)) continue;
+            if (AltarManager.isGenerated(server, cityId) || FAILED_THIS_SESSION.contains(cityId)) continue;
             if (cityId.equals(activeCityId) || QUEUED.contains(cityId)) continue;
             QUEUE.addLast(cityId);
             QUEUED.add(cityId);
@@ -113,10 +112,7 @@ public final class HiddenCityPreparationService {
                 pendingPreparationFuture = null;
                 pendingAdvanceFuture = null;
                 plannerStartDelayTicks = PLANNER_START_DELAY_TICKS;
-                AfterTheEnd.LOGGER.info(
-                        "Hidden city preparation queued: city={}; virtual planning starts after {} ticks on a low-priority worker.",
-                        cityId, PLANNER_START_DELAY_TICKS
-                );
+                AfterTheEnd.LOGGER.debug("Hidden city preparation queued: city={}", cityId);
                 return;
             } catch (RuntimeException exception) {
                 FAILED_THIS_SESSION.add(cityId);
@@ -134,13 +130,12 @@ public final class HiddenCityPreparationService {
         if (AltarManager.isGenerated(server, activeCityId)) {
             UUID completed = activeCityId;
             resetActive(false);
-            AfterTheEnd.LOGGER.info("Hidden city is READY: city={}", completed);
+            AfterTheEnd.LOGGER.debug("Hidden city is READY: city={}", completed);
+            AltarRitualHandler.retryPending(server);
             return;
         }
         try {
-            if (activePreparation == null) {
-                if (!finishOrStartInitialPlanning()) return;
-            }
+            if (activePreparation == null && !finishOrStartInitialPlanning()) return;
 
             if (pendingChunkFuture != null) {
                 if (!pendingChunkFuture.isDone()) return;
@@ -153,16 +148,15 @@ public final class HiddenCityPreparationService {
                     AltarPlacementService.completePreparation(server, city, activePreparation, activeStep.plans());
                     UUID completed = activeCityId;
                     resetActive(false);
-                    AfterTheEnd.LOGGER.info("Hidden city preparation completed; city is READY: city={}", completed);
+                    AfterTheEnd.LOGGER.info("Hidden city is READY: city={}", completed);
                     refreshQueue(server);
+                    AltarRitualHandler.retryPending(server);
                     return;
                 }
             }
 
             ServerLevel level = activePreparation.level();
-            List<ChunkPos> missing = AltarPlacementService.missingRequiredChunks(
-                    activePreparation, activeStep.candidateIndex()
-            );
+            List<ChunkPos> missing = AltarPlacementService.missingRequiredChunks(activePreparation, activeStep.candidateIndex());
             if (!missing.isEmpty()) {
                 startChunkBatch(level, missing, activeStep.chunkStatus());
                 return;
@@ -191,7 +185,6 @@ public final class HiddenCityPreparationService {
             pendingPreparationFuture = CompletableFuture.supplyAsync(
                     () -> AltarPlacementService.buildPreparation(seed), plannerExecutor()
             );
-            AfterTheEnd.LOGGER.info("Hidden city virtual planning started on worker: city={}", activeCityId);
             return false;
         }
         if (!pendingPreparationFuture.isDone()) return false;
@@ -200,8 +193,8 @@ public final class HiddenCityPreparationService {
         } catch (CompletionException exception) {
             throw new IllegalStateException("Hidden-city virtual planning failed for " + activeCityId, exception.getCause());
         }
-        AfterTheEnd.LOGGER.info(
-                "Hidden city initial virtual planning completed in {}sec without blocking a server tick: city={}",
+        AfterTheEnd.LOGGER.debug(
+                "Hidden city virtual planning completed in {}sec: city={}",
                 AltarPlacementPlanner.formatSeconds((System.nanoTime() - pendingPlannerStartedNanos) / 1_000_000_000.0), activeCityId
         );
         pendingPreparationFuture = null;
@@ -240,9 +233,9 @@ public final class HiddenCityPreparationService {
     }
 
     private static void shutdownPlannerExecutor() {
-        if (plannerExecutor == null) return;
-        plannerExecutor.shutdownNow();
+        ExecutorService executor = plannerExecutor;
         plannerExecutor = null;
+        if (executor != null) executor.shutdownNow();
     }
 
     private static void startChunkBatch(ServerLevel level, List<ChunkPos> chunks, ChunkStatus status) {
@@ -255,10 +248,6 @@ public final class HiddenCityPreparationService {
         }
         pendingChunkFutures = List.copyOf(futures);
         pendingChunkFuture = CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
-        AfterTheEnd.LOGGER.debug(
-                "Hidden city preparation requested async chunk batch size={} status={}",
-                chunks.size(), AltarPlacementPlanner.statusName(status)
-        );
     }
 
     private static void finishPendingChunkBatch() {
@@ -268,8 +257,8 @@ public final class HiddenCityPreparationService {
         } catch (CompletionException exception) {
             throw new IllegalStateException("Async hidden-city chunk batch generation failed at " + pendingChunks, exception.getCause());
         }
-        AfterTheEnd.LOGGER.info(
-                "chunk batch {} {} chunk(s) {}sec city={}",
+        AfterTheEnd.LOGGER.debug(
+                "Hidden city chunk batch {} {} chunk(s) {}sec city={}",
                 AltarPlacementPlanner.statusName(pendingChunkStatus), pendingChunks.size(),
                 AltarPlacementPlanner.formatSeconds((System.nanoTime() - pendingChunkStartedNanos) / 1_000_000_000.0), activeCityId
         );
@@ -286,6 +275,7 @@ public final class HiddenCityPreparationService {
             if (pendingAdvanceFuture != null) pendingAdvanceFuture.cancel(true);
             if (pendingChunkFuture != null) pendingChunkFuture.cancel(false);
             for (CompletableFuture<?> future : pendingChunkFutures) future.cancel(false);
+            shutdownPlannerExecutor();
         }
         activeCityId = null;
         pendingPreparationSeed = null;
