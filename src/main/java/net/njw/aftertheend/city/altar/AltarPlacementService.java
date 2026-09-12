@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -113,17 +114,35 @@ public final class AltarPlacementService {
         while (true) {
             AltarPlacementPlanner.PreparationStep step = advancePreparation(preparation);
             if (step.complete()) return completePreparation(server, city, preparation, step.plans());
-            for (ChunkPos chunk : missingRequiredChunks(preparation, step.candidateIndex())) {
-                long started = System.nanoTime();
-                preparation.level().getChunk(chunk.x(), chunk.z(), step.chunkStatus(), true);
-                AfterTheEnd.LOGGER.info(
-                        "chunk ({}, {}) {} {}sec city={}", chunk.x(), chunk.z(),
-                        AltarPlacementPlanner.statusName(step.chunkStatus()),
-                        AltarPlacementPlanner.formatSeconds((System.nanoTime() - started) / 1_000_000_000.0), city.id()
-                );
-            }
+            ensureRequiredChunks(server, preparation, step);
             exactEvaluateLoaded(preparation, step.candidateIndex());
         }
+    }
+
+    private static void ensureRequiredChunks(
+            MinecraftServer server,
+            Preparation preparation,
+            AltarPlacementPlanner.PreparationStep step
+    ) {
+        List<ChunkPos> missing = missingRequiredChunks(preparation, step.candidateIndex());
+        if (missing.isEmpty()) return;
+        long started = System.nanoTime();
+        List<CompletableFuture<?>> futures = new ArrayList<>(missing.size());
+        for (ChunkPos chunk : missing) {
+            futures.add(preparation.level().getChunkSource().getChunkFuture(
+                    chunk.x(), chunk.z(), step.chunkStatus(), true
+            ));
+        }
+        CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
+        server.managedBlock(all::isDone);
+        for (CompletableFuture<?> future : futures) future.join();
+        List<ChunkPos> remaining = missingRequiredChunks(preparation, step.candidateIndex());
+        if (!remaining.isEmpty()) throw new IllegalStateException("Batch Altar chunk generation did not prepare: " + remaining);
+        AfterTheEnd.LOGGER.info(
+                "chunk batch {} {} chunk(s) {}sec city={}",
+                AltarPlacementPlanner.statusName(step.chunkStatus()), missing.size(),
+                AltarPlacementPlanner.formatSeconds((System.nanoTime() - started) / 1_000_000_000.0), preparation.cityId()
+        );
     }
 
     private static List<AltarSpec> createSpecs(MinecraftServer server, long seed, UUID cityId) {
