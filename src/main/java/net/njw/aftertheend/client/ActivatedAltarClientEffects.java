@@ -141,7 +141,7 @@ public final class ActivatedAltarClientEffects {
         double floorY = echo.y() + 0.035;
         double outerPhase = echo.gameTime() * 0.0090 + echo.x() * 0.003 + echo.z() * 0.002;
         double supportPhase = -echo.gameTime() * 0.0048 + echo.x() * 0.0015 - echo.z() * 0.001;
-        double trianglePhase = echo.gameTime() * 0.0022 + echo.x() * 0.0011 - echo.z() * 0.0013;
+        double sealPhase = echo.gameTime() * 0.0022 + echo.x() * 0.0011 - echo.z() * 0.0013;
         double accentPhase = -echo.gameTime() * 0.0016 + echo.x() * 0.0007 + echo.z() * 0.0009;
 
         renderBrokenRing(pose, consumer, echo.x(), floorY, echo.z(), radius, 0.072,
@@ -154,7 +154,7 @@ public final class ActivatedAltarClientEffects {
         }
 
         renderCardinalAccents(pose, consumer, echo.x(), floorY + 0.008, echo.z(), radius, echo.large(), accentPhase);
-        renderCurvedTriangularSeal(pose, consumer, echo.x(), floorY + 0.012, echo.z(), radius, echo.large(), trianglePhase);
+        renderResonanceRibbonSeal(pose, consumer, echo.x(), floorY + 0.012, echo.z(), radius, echo.large(), sealPhase);
 
         double bob = Math.sin(echo.gameTime() * 0.12 + echo.x() * 0.05 + echo.z() * 0.04) * 0.08;
         renderCore(pose, consumer, echo.x(), echo.y() + 1.05 + bob, echo.z(), echo.gameTime());
@@ -209,80 +209,71 @@ public final class ActivatedAltarClientEffects {
         }
     }
 
-    private static void renderCurvedTriangularSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                                   double radius, boolean large, double phase) {
-        double outerVertexRadius = radius * (large ? 0.635 : 0.620);
-        double outerControlRadius = outerVertexRadius * 0.655;
-        double outerWidth = large ? 0.074 : 0.066;
-        double innerVertexRadius = outerVertexRadius * 0.56;
-        double innerControlRadius = innerVertexRadius * 0.58;
-        double innerWidth = large ? 0.036 : 0.032;
+    private static void renderResonanceRibbonSeal(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
+                                                  double radius, boolean large, double phase) {
         double base = phase - Math.PI * 0.5;
-
-        renderCurvedTriangle(pose, consumer, x, y, z, outerVertexRadius, outerControlRadius, base,
-                outerWidth, 16, PALE_RED, PALE_GREEN, PALE_BLUE, 232);
-        renderCurvedTriangle(pose, consumer, x, y + 0.002, z, innerVertexRadius, innerControlRadius, base + Math.PI,
-                innerWidth, 12, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 176);
-        renderInnerFlows(pose, consumer, x, y + 0.004, z, outerVertexRadius, base, large);
-
-        double centerRadius = radius * (large ? 0.112 : 0.105);
-        renderPolygonOutline(pose, consumer, x, y + 0.006, z, centerRadius, 3, base + Math.PI,
-                large ? 0.032 : 0.028, PALE_RED, PALE_GREEN, PALE_BLUE, 210);
-    }
-
-    private static void renderInnerFlows(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                         double outerVertexRadius, double base, boolean large) {
-        double startRadius = outerVertexRadius * 0.46;
-        double endRadius = outerVertexRadius * 0.18;
-        double controlRadius = outerVertexRadius * 0.075;
-        double width = large ? 0.033 : 0.029;
+        double outerRadius = radius * (large ? 0.635 : 0.620);
+        double endRadius = outerRadius * 0.43;
+        double controlOuter = outerRadius * 0.82;
+        double controlInner = outerRadius * 0.31;
+        double mainStartWidth = large ? 0.072 : 0.064;
+        double mainEndWidth = large ? 0.032 : 0.028;
 
         for (int i = 0; i < 3; i++) {
-            double corner = base + i * Math.PI * 2.0 / 3.0;
-            double next = corner + Math.PI * 2.0 / 3.0;
-            double startAngle = corner + 0.19;
-            double endAngle = next - 0.34;
-            double controlAngle = corner + Math.PI / 3.0 + 0.12;
-            double x1 = x + Math.cos(startAngle) * startRadius;
-            double z1 = z + Math.sin(startAngle) * startRadius;
-            double x2 = x + Math.cos(endAngle) * endRadius;
-            double z2 = z + Math.sin(endAngle) * endRadius;
-            double cx = x + Math.cos(controlAngle) * controlRadius;
-            double cz = z + Math.sin(controlAngle) * controlRadius;
-            renderQuadraticBezierXZ(pose, consumer, x1, y, z1, cx, cz, x2, z2,
-                    width, 10, PALE_RED, PALE_GREEN, PALE_BLUE, 190);
+            double a = base + i * Math.PI * 2.0 / 3.0;
+            double b = a + Math.PI * 2.0 / 3.0;
+
+            double x1 = x + Math.cos(a + 0.045) * outerRadius;
+            double z1 = z + Math.sin(a + 0.045) * outerRadius;
+            double c1x = x + Math.cos(a + 0.52) * controlOuter;
+            double c1z = z + Math.sin(a + 0.52) * controlOuter;
+            double c2x = x + Math.cos(b - 0.50) * controlInner;
+            double c2z = z + Math.sin(b - 0.50) * controlInner;
+            double x2 = x + Math.cos(b - 0.18) * endRadius;
+            double z2 = z + Math.sin(b - 0.18) * endRadius;
+
+            renderCubicBezierXZ(pose, consumer, x1, y, z1, c1x, c1z, c2x, c2z, x2, z2,
+                    mainStartWidth, mainEndWidth, 18, PALE_RED, PALE_GREEN, PALE_BLUE, 232);
+
+            double tracerOuter = outerRadius * 0.87;
+            double tracerEnd = endRadius * 0.82;
+            double tx1 = x + Math.cos(a + 0.105) * tracerOuter;
+            double tz1 = z + Math.sin(a + 0.105) * tracerOuter;
+            double tc1x = x + Math.cos(a + 0.55) * controlOuter * 0.84;
+            double tc1z = z + Math.sin(a + 0.55) * controlOuter * 0.84;
+            double tc2x = x + Math.cos(b - 0.46) * controlInner * 0.76;
+            double tc2z = z + Math.sin(b - 0.46) * controlInner * 0.76;
+            double tx2 = x + Math.cos(b - 0.15) * tracerEnd;
+            double tz2 = z + Math.sin(b - 0.15) * tracerEnd;
+
+            renderCubicBezierXZ(pose, consumer, tx1, y + 0.002, tz1, tc1x, tc1z, tc2x, tc2z, tx2, tz2,
+                    mainStartWidth * 0.40, mainEndWidth * 0.58, 16, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 180);
         }
+
+        double centerRadius = radius * (large ? 0.105 : 0.098);
+        renderBrokenRing(pose, consumer, x, y + 0.004, z, centerRadius, large ? 0.024 : 0.021,
+                6, 0.46, 2, -phase * 1.35, GOLD_RED, GOLD_GREEN, GOLD_BLUE, 150);
     }
 
-    private static void renderCurvedTriangle(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                             double vertexRadius, double controlRadius, double base,
-                                             double width, int segments, int red, int green, int blue, int alpha) {
-        for (int i = 0; i < 3; i++) {
-            double a1 = base + i * Math.PI * 2.0 / 3.0;
-            double a2 = base + (i + 1) * Math.PI * 2.0 / 3.0;
-            double mid = (a1 + a2) * 0.5;
-            double x1 = x + Math.cos(a1) * vertexRadius;
-            double z1 = z + Math.sin(a1) * vertexRadius;
-            double x2 = x + Math.cos(a2) * vertexRadius;
-            double z2 = z + Math.sin(a2) * vertexRadius;
-            double cx = x + Math.cos(mid) * controlRadius;
-            double cz = z + Math.sin(mid) * controlRadius;
-            renderQuadraticBezierXZ(pose, consumer, x1, y, z1, cx, cz, x2, z2,
-                    width, segments, red, green, blue, alpha);
-        }
-    }
-
-    private static void renderQuadraticBezierXZ(PoseStack.Pose pose, VertexConsumer consumer,
-                                                 double x1, double y, double z1, double cx, double cz,
-                                                 double x2, double z2, double width, int segments,
-                                                 int red, int green, int blue, int alpha) {
+    private static void renderCubicBezierXZ(PoseStack.Pose pose, VertexConsumer consumer,
+                                            double x1, double y, double z1,
+                                            double c1x, double c1z, double c2x, double c2z,
+                                            double x2, double z2, double startWidth, double endWidth, int segments,
+                                            int red, int green, int blue, int alpha) {
         double previousX = x1;
         double previousZ = z1;
         for (int i = 1; i <= segments; i++) {
             double t = (double)i / segments;
             double u = 1.0 - t;
-            double nextX = u * u * x1 + 2.0 * u * t * cx + t * t * x2;
-            double nextZ = u * u * z1 + 2.0 * u * t * cz + t * t * z2;
+            double nextX = u * u * u * x1
+                    + 3.0 * u * u * t * c1x
+                    + 3.0 * u * t * t * c2x
+                    + t * t * t * x2;
+            double nextZ = u * u * u * z1
+                    + 3.0 * u * u * t * c1z
+                    + 3.0 * u * t * t * c2z
+                    + t * t * t * z2;
+            double width = startWidth + (endWidth - startWidth) * t;
             renderLineXZ(pose, consumer, previousX, y, previousZ, nextX, nextZ, width,
                     red, green, blue, alpha);
             previousX = nextX;
@@ -303,19 +294,6 @@ public final class ActivatedAltarClientEffects {
                     x + Math.cos(a2) * outer, y, z + Math.sin(a2) * outer,
                     x + Math.cos(mid) * outer * 0.93, y, z + Math.sin(mid) * outer * 0.93,
                     red, green, blue, alpha);
-        }
-    }
-
-    private static void renderPolygonOutline(PoseStack.Pose pose, VertexConsumer consumer, double x, double y, double z,
-                                             double radius, int sides, double angleOffset, double width,
-                                             int red, int green, int blue, int alpha) {
-        for (int i = 0; i < sides; i++) {
-            double a1 = angleOffset + Math.PI * 2.0 * i / sides;
-            double a2 = angleOffset + Math.PI * 2.0 * (i + 1) / sides;
-            renderLineXZ(pose, consumer,
-                    x + Math.cos(a1) * radius, y, z + Math.sin(a1) * radius,
-                    x + Math.cos(a2) * radius, z + Math.sin(a2) * radius,
-                    width, red, green, blue, alpha);
         }
     }
 
