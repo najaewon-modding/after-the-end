@@ -16,13 +16,9 @@ public final class AltarGenerationHandler {
         MinecraftServer server = event.getServer();
         int createdCities = CityLifecycleService.ensureLockedCityReserve(server);
         int generatedAccessibleAltars = 0;
-        int generatedLockedAltars = 0;
 
         for (City city : CityManager.getAccessibleCities(server)) {
             if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedAccessibleAltars++;
-        }
-        for (City city : CityManager.getLockedCities(server)) {
-            if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedLockedAltars++;
         }
 
         HiddenCityPreparationService.refreshQueue(server);
@@ -31,9 +27,6 @@ public final class AltarGenerationHandler {
         }
         if (generatedAccessibleAltars > 0) {
             AfterTheEnd.LOGGER.info("Generated missing Altars for {} accessible city/cities during server startup.", generatedAccessibleAltars);
-        }
-        if (generatedLockedAltars > 0) {
-            AfterTheEnd.LOGGER.info("Generated missing Altars for {} locked reserve city/cities during server startup; initial reserve is READY.", generatedLockedAltars);
         }
     }
 }
