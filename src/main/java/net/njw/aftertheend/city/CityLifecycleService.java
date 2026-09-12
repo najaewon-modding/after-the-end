@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.city.altar.AltarManager;
 import net.njw.aftertheend.city.altar.AltarPlacementService;
+import net.njw.aftertheend.city.altar.HiddenCityPreparationService;
 import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 import net.njw.aftertheend.city.placement.CityPlacementService;
 import net.njw.aftertheend.network.CitySyncService;
@@ -13,8 +14,7 @@ import net.njw.aftertheend.network.CitySyncService;
 public final class CityLifecycleService {
     public static final int LOCKED_CITY_RESERVE_COUNT = 3;
 
-    private CityLifecycleService() {
-    }
+    private CityLifecycleService() { }
 
     public static City createAccessibleCity(MinecraftServer server) {
         ensureCanAddUnlockedCity(server);
@@ -31,6 +31,7 @@ public final class CityLifecycleService {
         }
         City city = createLockedCityInternal(server);
         finishCityStateChange(server);
+        HiddenCityPreparationService.refreshQueue(server);
         return city;
     }
 
@@ -38,26 +39,39 @@ public final class CityLifecycleService {
         int created = 0;
         while (CityManager.getLockedCityCount(server) < LOCKED_CITY_RESERVE_COUNT) {
             int slot = CityManager.getLockedCityCount(server) + 1;
-            AfterTheEnd.LOGGER.info("Preparing locked city reserve [{}/{}].", slot, LOCKED_CITY_RESERVE_COUNT);
+            AfterTheEnd.LOGGER.info("Preparing locked city reserve metadata [{}/{}].", slot, LOCKED_CITY_RESERVE_COUNT);
             City city = createLockedCityInternal(server);
             created++;
-            AfterTheEnd.LOGGER.info("Prepared locked city reserve [{}/{}]: {}", slot, LOCKED_CITY_RESERVE_COUNT, city.id());
+            AfterTheEnd.LOGGER.info("Prepared locked city reserve metadata [{}/{}]: {}", slot, LOCKED_CITY_RESERVE_COUNT, city.id());
         }
         if (created > 0) finishCityStateChange(server);
+        HiddenCityPreparationService.refreshQueue(server);
         return created;
+    }
+
+    public static City getNextReadyLockedCity(MinecraftServer server) {
+        for (City city : CityManager.getLockedCities(server)) {
+            if (AltarManager.isGenerated(server, city.id())) return city;
+        }
+        return null;
     }
 
     public static City unlockCity(MinecraftServer server, UUID cityId) {
         City city = requireCity(server, cityId);
-        AltarPlacementService.ensureGenerated(server, city);
         if (CityManager.isCityAccessible(server, cityId)) return city;
+        if (!AltarManager.isGenerated(server, cityId)) {
+            throw new IllegalStateException("Locked city is still PREPARING and cannot be unlocked yet: " + cityId);
+        }
         ensureCanAddUnlockedCity(server);
 
-        // Prepare the replacement first.  The reserve is briefly four cities, then
-        // returns to exactly three when the requested city becomes accessible.
-        createLockedCityInternal(server);
         CityManager.unlockCity(server, cityId);
+        try {
+            ensureLockedCityReserve(server);
+        } catch (RuntimeException exception) {
+            AfterTheEnd.LOGGER.error("City {} was unlocked, but the hidden-city reserve could not be replenished immediately.", cityId, exception);
+        }
         finishCityStateChange(server);
+        HiddenCityPreparationService.refreshQueue(server);
         return city;
     }
 
@@ -70,13 +84,13 @@ public final class CityLifecycleService {
                 throw new IllegalStateException("Cannot delete city while player " + player.getName().getString() + " is inside it.");
             }
         }
+        HiddenCityPreparationService.removeCity(cityId);
         CityPregenerationHandler.removeCity(cityId);
         AltarManager.removeCity(server, cityId);
         CityManager.removeCity(server, cityId);
-        if (wasLocked) {
-            while (CityManager.getLockedCityCount(server) < LOCKED_CITY_RESERVE_COUNT) createLockedCityInternal(server);
-        }
+        if (wasLocked) ensureLockedCityReserve(server);
         finishCityStateChange(server);
+        HiddenCityPreparationService.refreshQueue(server);
     }
 
     public static void setMaxCityCount(MinecraftServer server, int maxCityCount) {
@@ -86,9 +100,7 @@ public final class CityLifecycleService {
 
     private static City createLockedCityInternal(MinecraftServer server) {
         UUID cityId = newCityId(server);
-        City city = CityPlacementService.placeLockedCity(server, cityId, cityId.toString());
-        generateAltarsOrRollback(server, city);
-        return city;
+        return CityPlacementService.placeLockedCity(server, cityId, cityId.toString());
     }
 
     private static void generateAltarsOrRollback(MinecraftServer server, City city) {

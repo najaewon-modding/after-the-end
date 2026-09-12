@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "minecraft:item/end_crystal",
+    "tints": [
+      {
+        "type": "minecraft:constant",
+        "value": -3622956
+      }
+    ]
+  }
+}

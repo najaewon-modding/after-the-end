@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "calmed=false": {
+      "model": "njw_after_the_end:block/resonance_crystal"
+    },
+    "calmed=true": {
+      "model": "njw_after_the_end:block/resonance_crystal"
+    }
+  }
+}

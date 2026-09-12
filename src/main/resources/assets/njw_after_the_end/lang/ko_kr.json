@@ -1,0 +1,15 @@
+{
+  "key.category.njw_after_the_end.city": "After the End",
+  "key.njw_after_the_end.open_city_list": "도시 목록 열기",
+  "item.njw_after_the_end.shulker_core": "셜커 코어",
+  "block.njw_after_the_end.resonance_crystal": "공명 수정",
+  "gui.njw_after_the_end.city_list.title": "도시 목록",
+  "gui.njw_after_the_end.city_list.empty": "도시 없음",
+  "gui.njw_after_the_end.city_list.status.unlocked": "해금됨",
+  "gui.njw_after_the_end.city_list.status.locked": "해금되지 않음",
+  "gui.njw_after_the_end.city_list.dimension.overworld": "오버월드",
+  "gui.njw_after_the_end.city_list.dimension.nether": "네더",
+  "gui.njw_after_the_end.city_list.move": "이동",
+  "gui.njw_after_the_end.city_list.close": "닫기",
+  "message.njw_after_the_end.city_move.requires_activated_altar": "도시 이동은 활성화된 제단 근처에서만 가능합니다."
+}

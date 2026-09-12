@@ -1,6 +1,7 @@
 package net.njw.aftertheend.client.gui;
 
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -8,13 +9,14 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.njw.aftertheend.city.CityRegion;
+import net.njw.aftertheend.city.altar.AltarTravelAccess;
 import net.njw.aftertheend.client.ClientCityManager;
 import net.njw.aftertheend.network.CityTeleportRequestPayload;
 
 import java.util.List;
 
 public final class CityListScreen extends Screen {
-    private static final int CONTENT_WIDTH = 320;
+    private static final int CONTENT_WIDTH = 332;
     private static final int CONTENT_HEIGHT = 166;
     private static final int LIST_WIDTH = 96;
     private static final int COLUMN_GAP = 12;
@@ -23,6 +25,10 @@ public final class CityListScreen extends Screen {
     private static final int BUTTON_WIDTH = 72;
     private static final int BUTTON_HEIGHT = 18;
     private static final int BUTTON_GAP = 8;
+    private static final int NAME_EDGE_PADDING = 2;
+    private static final long MARQUEE_START_PAUSE_MS = 700L;
+    private static final long MARQUEE_END_PAUSE_MS = 2000L;
+    private static final float MARQUEE_SPEED_PIXELS_PER_SECOND = 24.0F;
 
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int MUTED_COLOR = 0xFFAAAAAA;
@@ -36,6 +42,7 @@ public final class CityListScreen extends Screen {
 
     private int selectedIndex;
     private int scrollOffset;
+    private long selectedSinceMs = System.currentTimeMillis();
 
     public CityListScreen() {
         super(Component.translatable("gui.njw_after_the_end.city_list.title"));
@@ -72,7 +79,10 @@ public final class CityListScreen extends Screen {
             boolean hovered = isInside(mouseX, mouseY, left, y - 3, LIST_WIDTH, ROW_HEIGHT);
             int color = selected ? TEXT_COLOR : hovered ? HOVER_COLOR : MUTED_COLOR;
             Component marker = Component.literal(selected ? "> " : "  ");
-            graphics.text(font, marker.copy().append(Component.literal(city.name())), left, y, color, false);
+            int markerWidth = font.width(marker);
+            graphics.text(font, marker, left, y, color, false);
+            renderCityName(graphics, city.name(), left + markerWidth, y,
+                    LIST_WIDTH - markerWidth - NAME_EDGE_PADDING, color, selected);
         }
     }
 
@@ -83,7 +93,8 @@ public final class CityListScreen extends Screen {
             return;
         }
 
-        graphics.text(font, Component.literal(city.name()), x, y, TEXT_COLOR, false);
+        int detailWidth = CONTENT_WIDTH - LIST_WIDTH - COLUMN_GAP;
+        renderCityName(graphics, city.name(), x, y, detailWidth, TEXT_COLOR, true);
         Component status = Component.translatable(city.unlocked() ? "gui.njw_after_the_end.city_list.status.unlocked" : "gui.njw_after_the_end.city_list.status.locked");
         graphics.text(font, status, x, y + 14, city.unlocked() ? UNLOCKED_COLOR : LOCKED_COLOR, false);
 
@@ -96,6 +107,47 @@ public final class CityListScreen extends Screen {
 
         CityRegion netherRegion = city.getRegion(Level.NETHER.identifier());
         if (netherRegion != null) renderRegionBounds(graphics, x, detailY, Component.translatable("gui.njw_after_the_end.city_list.dimension.nether"), netherRegion);
+    }
+
+    private void renderCityName(GuiGraphicsExtractor graphics, String name, int x, int y, int maxWidth, int color, boolean focused) {
+        if (maxWidth <= 0) return;
+        int textWidth = font.width(name);
+        if (textWidth <= maxWidth) {
+            graphics.text(font, Component.literal(name), x, y, color, false);
+            return;
+        }
+        if (!focused) {
+            graphics.text(font, Component.literal(ellipsize(name, maxWidth)), x, y, color, false);
+            return;
+        }
+
+        int overflow = textWidth - maxWidth;
+        long moveDuration = Math.max(1L, (long) Math.ceil(overflow * 1000.0 / MARQUEE_SPEED_PIXELS_PER_SECOND));
+        long cycleDuration = MARQUEE_START_PAUSE_MS + moveDuration + MARQUEE_END_PAUSE_MS;
+        long phase = Math.floorMod(System.currentTimeMillis() - selectedSinceMs, cycleDuration);
+        int offset;
+        if (phase < MARQUEE_START_PAUSE_MS) {
+            offset = 0;
+        } else if (phase < MARQUEE_START_PAUSE_MS + moveDuration) {
+            long movingTime = phase - MARQUEE_START_PAUSE_MS;
+            offset = Math.min(overflow, Math.round(movingTime * MARQUEE_SPEED_PIXELS_PER_SECOND / 1000.0F));
+        } else {
+            offset = overflow;
+        }
+
+        graphics.enableScissor(x, y - 2, x + maxWidth, y + font.lineHeight + 2);
+        graphics.text(font, Component.literal(name), x - offset, y, color, false);
+        graphics.disableScissor();
+    }
+
+    private String ellipsize(String text, int maxWidth) {
+        if (font.width(text) <= maxWidth) return text;
+        String suffix = "…";
+        int available = maxWidth - font.width(suffix);
+        if (available <= 0) return suffix;
+        int end = text.length();
+        while (end > 0 && font.width(text.substring(0, end)) > available) end--;
+        return text.substring(0, end) + suffix;
     }
 
     private void renderRegionBounds(GuiGraphicsExtractor graphics, int x, int y, Component dimension, CityRegion region) {
@@ -117,7 +169,7 @@ public final class CityListScreen extends Screen {
         int buttonX = left + (CONTENT_WIDTH - totalWidth) / 2;
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity city = getSelectedCity();
-        boolean moveEnabled = city != null && city.unlocked();
+        boolean moveEnabled = city != null && city.unlocked() && isNearActivatedAltar();
         drawButton(graphics, buttonX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.move"), moveEnabled, isInside(mouseX, mouseY, buttonX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
         int closeX = buttonX + BUTTON_WIDTH + BUTTON_GAP;
         drawButton(graphics, closeX, buttonY, Component.translatable("gui.njw_after_the_end.city_list.close"), true, isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT));
@@ -142,7 +194,10 @@ public final class CityListScreen extends Screen {
             int row = index - scrollOffset;
             int y = listTop + row * ROW_HEIGHT;
             if (isInside(click.x(), click.y(), left, y - 3, LIST_WIDTH, ROW_HEIGHT)) {
-                selectedIndex = index;
+                if (selectedIndex != index) {
+                    selectedIndex = index;
+                    selectedSinceMs = System.currentTimeMillis();
+                }
                 return true;
             }
         }
@@ -151,7 +206,8 @@ public final class CityListScreen extends Screen {
         int moveX = left + (CONTENT_WIDTH - totalWidth) / 2;
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity selectedCity = getSelectedCity();
-        if (selectedCity != null && selectedCity.unlocked() && isInside(click.x(), click.y(), moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+        if (selectedCity != null && selectedCity.unlocked() && isNearActivatedAltar()
+                && isInside(click.x(), click.y(), moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             ClientPacketDistributor.sendToServer(new CityTeleportRequestPayload(selectedCity.id()));
             onClose();
             return true;
@@ -189,7 +245,23 @@ public final class CityListScreen extends Screen {
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         int closeX = moveX + BUTTON_WIDTH + BUTTON_GAP;
         ClientCityManager.ClientCity city = getSelectedCity();
-        return city != null && city.unlocked() && isInside(mouseX, mouseY, moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT) || isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        return city != null && city.unlocked() && isNearActivatedAltar()
+                && isInside(mouseX, mouseY, moveX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
+                || isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+    }
+
+    private boolean isNearActivatedAltar() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.level == null || !minecraft.level.dimension().equals(Level.OVERWORLD)) return false;
+        double x = minecraft.player.getX();
+        double y = minecraft.player.getY();
+        double z = minecraft.player.getZ();
+        for (ClientCityManager.ClientCity city : ClientCityManager.getAccessibleCities()) {
+            for (ClientCityManager.ClientAltar altar : city.activatedAltars()) {
+                if (AltarTravelAccess.isNear(x, y, z, altar.blockX(), altar.y(), altar.blockZ(), altar.large())) return true;
+            }
+        }
+        return false;
     }
 
     private ClientCityManager.ClientCity getSelectedCity() {

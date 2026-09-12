@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "njw_after_the_end:item/shulker_core",
+    "tints": [
+      {
+        "type": "minecraft:constant",
+        "value": -5213992
+      }
+    ]
+  }
+}
