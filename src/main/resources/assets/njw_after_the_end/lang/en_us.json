@@ -27,6 +27,7 @@
   "message.njw_after_the_end.city_move.unknown_city": "Unknown city.",
   "message.njw_after_the_end.city_move.city_locked": "This city is locked.",
   "message.njw_after_the_end.city_move.dimension_unavailable": "This city does not exist in the current dimension.",
+  "message.njw_after_the_end.city_move.requires_activated_altar": "City Move is only available near an activated Altar.",
   "message.njw_after_the_end.city_move.monsters_nearby": "You may not move while monsters are nearby.",
   "message.njw_after_the_end.city_move.preparing": "Preparing move to %s...",
   "message.njw_after_the_end.city_move.moved": "Moved to %s.",
