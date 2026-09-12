@@ -1,5 +1,6 @@
 package net.njw.aftertheend.city.altar;
 
+import java.util.List;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -9,8 +10,6 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityManager;
-
-import java.util.List;
 
 public final class AltarCommand {
     private AltarCommand() { }
@@ -47,7 +46,7 @@ public final class AltarCommand {
         }
 
         if (nearest == null) {
-            source.sendFailure(Component.literal("No Altar has been generated yet."));
+            source.sendFailure(Component.translatable("command.njw_after_the_end.altar.no_generated"));
             return 0;
         }
 
@@ -56,10 +55,10 @@ public final class AltarCommand {
         int y = nearest.y() + 2;
         int z = nearest.blockZ() + half;
         long distance = Math.round(Math.sqrt(nearestDistanceSquared));
-        source.sendSuccess(
-                () -> Component.literal("Nearest Altar: [" + x + ", " + y + ", " + z + "] (" + distance + " blocks away)"),
-                false
-        );
+        Component coordinates = coordinates(x, y, z, false);
+        source.sendSuccess(() -> Component.translatable(
+                "command.njw_after_the_end.altar.nearest", coordinates, distance
+        ), false);
         return 1;
     }
 
@@ -75,36 +74,49 @@ public final class AltarCommand {
         }
 
         if (currentCity == null) {
-            source.sendFailure(Component.literal("You are not inside a city."));
+            source.sendFailure(Component.translatable("command.njw_after_the_end.altar.not_in_city"));
             return 0;
         }
 
         List<AltarPlacement> placements = AltarManager.getPlacements(source.getServer(), currentCity.id());
         if (placements.isEmpty()) {
-            source.sendFailure(Component.literal("No Altar has been generated for city " + currentCity.id() + "."));
+            source.sendFailure(Component.translatable("command.njw_after_the_end.altar.none_in_city", currentCity.id().toString()));
             return 0;
         }
 
         City city = currentCity;
-        source.sendSuccess(() -> Component.literal("Altars in " + city.id() + ": " + placements.size()), false);
+        source.sendSuccess(() -> Component.translatable(
+                "command.njw_after_the_end.altar.list_header", city.id().toString(), placements.size()
+        ), false);
         for (int index = 0; index < placements.size(); index++) {
             AltarPlacement placement = placements.get(index);
             int half = placement.large() ? 13 : 5;
             int x = placement.blockX() + half;
             int y = placement.y() + 2;
             int z = placement.blockZ() + half;
-            String type = placement.large() ? "large" : "small";
-            String state = placement.ruined() ? "ruined" : "normal";
-            String tpCommand = "/tp " + x + " " + y + " " + z;
-            Component coordinates = Component.literal("[" + x + ", " + y + ", " + z + "]")
-                    .withStyle(style -> style
-                            .withColor(ChatFormatting.AQUA)
-                            .withUnderlined(true)
-                            .withClickEvent(new ClickEvent.SuggestCommand(tpCommand)));
-            Component line = Component.literal((index + 1) + ". " + type + " / " + placement.color() + " / " + state + " ")
-                    .append(coordinates);
+            Component type = Component.translatable(placement.large()
+                    ? "command.njw_after_the_end.altar.type.large"
+                    : "command.njw_after_the_end.altar.type.small");
+            Component color = Component.translatable("command.njw_after_the_end.altar.color." + placement.color());
+            Component state = Component.translatable(placement.ruined()
+                    ? "command.njw_after_the_end.altar.state.ruined"
+                    : "command.njw_after_the_end.altar.state.normal");
+            Component coordinates = coordinates(x, y, z, true);
+            Component line = Component.translatable(
+                    "command.njw_after_the_end.altar.list_entry", index + 1, type, color, state, coordinates
+            );
             source.sendSuccess(() -> line, false);
         }
         return placements.size();
+    }
+
+    private static Component coordinates(int x, int y, int z, boolean clickable) {
+        Component component = Component.literal("[" + x + ", " + y + ", " + z + "]");
+        if (!clickable) return component;
+        String tpCommand = "/tp " + x + " " + y + " " + z;
+        return component.copy().withStyle(style -> style
+                .withColor(ChatFormatting.AQUA)
+                .withUnderlined(true)
+                .withClickEvent(new ClickEvent.SuggestCommand(tpCommand)));
     }
 }
