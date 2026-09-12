@@ -68,13 +68,16 @@ public final class AltarRitualHandler {
     public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
         if (!(event.getLevel() instanceof ServerLevel level) || !level.dimension().equals(Level.OVERWORLD)) return;
         ServerPlayer player = event.getEntity() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+        handlePlacedBlock(level, event.getPos(), player);
+    }
 
-        if (event.getPlacedBlock().is(ModContent.RESONANCE_CRYSTAL.get())) {
-            handleResonanceCrystalPlaced(level, event.getPos(), player);
-            return;
-        }
-        if (event.getPlacedBlock().getBlock() instanceof RecordedDragonEggBlock) {
-            handleRecordedDragonEggPlaced(level, event.getPos(), player);
+    public static void handlePlacedBlock(ServerLevel level, BlockPos pos, ServerPlayer player) {
+        if (!level.dimension().equals(Level.OVERWORLD)) return;
+        BlockState state = level.getBlockState(pos);
+        if (state.is(ModContent.RESONANCE_CRYSTAL.get())) {
+            handleResonanceCrystalPlaced(level, pos, player);
+        } else if (state.getBlock() instanceof RecordedDragonEggBlock) {
+            handleRecordedDragonEggPlaced(level, pos, player);
         }
     }
 
@@ -195,11 +198,6 @@ public final class AltarRitualHandler {
         return count;
     }
 
-    private static boolean hasUnlockingSequence() {
-        for (RitualSequence sequence : ACTIVE_SEQUENCES.values()) if (sequence.targetCityId != null) return true;
-        return false;
-    }
-
     private static void tryStartRitual(MinecraftServer server, ServerLevel level, AltarSite site) {
         AltarKey key = site.key();
         if (ACTIVE_SEQUENCES.containsKey(key) || site.placement().activated() || !hasRitualPattern(level, site.geometry())) {
@@ -213,18 +211,10 @@ public final class AltarRitualHandler {
         }
 
         int activatedCount = AltarManager.getActivatedCount(server, site.cityId());
-        UUID targetCityId = null;
-        if (unlocksCity(activatedCount, CityManager.getAccessibleCities(server).size(), CityManager.getMaxCityCount(server))) {
-            if (hasUnlockingSequence()) {
-                PENDING_RITUALS.add(key);
-                return;
-            }
-            City targetCity = CityManager.getNextLockedCity(server);
-            if (targetCity == null) {
-                PENDING_RITUALS.add(key);
-                return;
-            }
-            targetCityId = targetCity.id();
+        if (unlocksCity(activatedCount, CityManager.getAccessibleCities(server).size(), CityManager.getMaxCityCount(server))
+                && CityManager.getNextLockedCity(server) == null) {
+            PENDING_RITUALS.add(key);
+            return;
         }
 
         RitualGeometry geometry = site.geometry();
@@ -243,7 +233,7 @@ public final class AltarRitualHandler {
         level.addFreshEntity(floatingEgg);
 
         RitualSequence sequence = new RitualSequence(
-                key, site.cityId(), targetCityId, site.placement().large(), geometry,
+                key, site.cityId(), site.placement().large(), geometry,
                 level.getGameTime(), eggState, eggStack, floatingEgg
         );
         ACTIVE_SEQUENCES.put(key, sequence);
@@ -252,7 +242,7 @@ public final class AltarRitualHandler {
         level.sendParticles(ParticleTypes.PORTAL, geometry.center().getX() + 0.5, geometry.center().getY() + 0.8,
                 geometry.center().getZ() + 0.5, 48, 2.0, 1.0, 2.0, 0.04);
         broadcastEffect(level, sequence, false);
-        AfterTheEnd.LOGGER.debug("Started Altar ritual: city={}, targetCity={}, altar={}", site.cityId(), targetCityId, key);
+        AfterTheEnd.LOGGER.debug("Started Altar ritual: city={}, altar={}", site.cityId(), key);
     }
 
     private static void tryStartPending(MinecraftServer server, ServerLevel level) {
@@ -310,34 +300,29 @@ public final class AltarRitualHandler {
             cancel(server, level, sequence, "crystal pattern incomplete");
             return;
         }
-
-        int activatedCount = AltarManager.getActivatedCount(server, sequence.cityId);
         if (!canActivateAltar(server, sequence.cityId)) {
             cancel(server, level, sequence, "activation no longer allowed");
             return;
         }
 
-        boolean shouldUnlockCity = unlocksCity(
-                activatedCount,
-                CityManager.getAccessibleCities(server).size(),
-                CityManager.getMaxCityCount(server)
+        AltarSavedData.ActivationClaim claim = AltarManager.claimActivation(
+                server, sequence.cityId, sequence.key.originX(), sequence.key.originY(), sequence.key.originZ(),
+                MAX_ACTIVATED_ALTARS_PER_CITY
         );
-        boolean unlocksCity = sequence.targetCityId != null;
-        if (shouldUnlockCity != unlocksCity) {
-            cancel(server, level, sequence, "activation order changed");
+        if (!claim.claimed()) {
+            cancel(server, level, sequence, "Altar activation claim failed");
             return;
-        }
-        if (unlocksCity) {
-            City nextLocked = CityManager.getNextLockedCity(server);
-            if (nextLocked == null || !nextLocked.id().equals(sequence.targetCityId)) {
-                cancel(server, level, sequence, "next locked city changed");
-                return;
-            }
         }
 
-        if (!AltarManager.setActivated(server, sequence.cityId, sequence.key.originX(), sequence.key.originY(), sequence.key.originZ(), true)) {
-            cancel(server, level, sequence, "Altar placement no longer exists");
-            return;
+        City targetCity = null;
+        if (claim.previousActivatedCount() == 0) {
+            targetCity = CityManager.getNextLockedCity(server);
+            if (targetCity == null) {
+                AltarManager.setActivated(server, sequence.cityId, sequence.key.originX(), sequence.key.originY(), sequence.key.originZ(), false);
+                PENDING_RITUALS.add(sequence.key);
+                cancel(server, level, sequence, "next locked city is not ready");
+                return;
+            }
         }
 
         Vec3 eggPosition = sequence.floatingEgg.position();
@@ -353,16 +338,16 @@ public final class AltarRitualHandler {
         level.playSound(null, sequence.geometry.center(), SoundEvents.END_PORTAL_SPAWN, SoundSource.BLOCKS, 1.9F, 1.0F);
         broadcastEffect(level, sequence, true);
 
-        if (unlocksCity) {
+        if (targetCity != null) {
             try {
-                CityLifecycleService.unlockCity(server, sequence.targetCityId);
+                CityLifecycleService.unlockCity(server, targetCity.id());
             } catch (RuntimeException exception) {
                 AltarManager.setActivated(server, sequence.cityId, sequence.key.originX(), sequence.key.originY(), sequence.key.originZ(), false);
                 eggDrop.discard();
                 restoreRecordedEggBlock(level, sequence.geometry.center(), sequence.eggState, sequence.eggStack);
                 restoreCrystals(level, sequence.geometry, canActivateAltar(server, sequence.cityId));
                 finishSequence(server, level, sequence);
-                AfterTheEnd.LOGGER.error("Altar ritual failed while unlocking city {}", sequence.targetCityId, exception);
+                AfterTheEnd.LOGGER.error("Altar ritual failed while unlocking city {}", targetCity.id(), exception);
                 return;
             }
         } else {
@@ -512,7 +497,6 @@ public final class AltarRitualHandler {
     private static final class RitualSequence {
         private final AltarKey key;
         private final UUID cityId;
-        private final UUID targetCityId;
         private final boolean large;
         private final RitualGeometry geometry;
         private final long startGameTime;
@@ -520,11 +504,10 @@ public final class AltarRitualHandler {
         private final ItemStack eggStack;
         private final Display.ItemDisplay floatingEgg;
 
-        private RitualSequence(AltarKey key, UUID cityId, UUID targetCityId, boolean large, RitualGeometry geometry,
+        private RitualSequence(AltarKey key, UUID cityId, boolean large, RitualGeometry geometry,
                                long startGameTime, BlockState eggState, ItemStack eggStack, Display.ItemDisplay floatingEgg) {
             this.key = key;
             this.cityId = cityId;
-            this.targetCityId = targetCityId;
             this.large = large;
             this.geometry = geometry;
             this.startGameTime = startGameTime;
