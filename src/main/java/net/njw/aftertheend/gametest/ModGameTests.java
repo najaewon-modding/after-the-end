@@ -243,8 +243,8 @@ public final class ModGameTests {
     }
 
     private static void addForcedChunk(ServerLevel level, Set<ChunkPos> chunks, BlockPos pos) {
-        ChunkPos chunk = new ChunkPos(pos);
-        if (chunks.add(chunk)) level.setChunkForced(chunk.x, chunk.z, true);
+        ChunkPos chunk = new ChunkPos(pos.getX() >> 4, pos.getZ() >> 4);
+        if (chunks.add(chunk)) level.setChunkForced(chunk.x(), chunk.z(), true);
     }
 
     private static void startRitual(ServerLevel level, AltarPlacement placement, ServerPlayer player) {
@@ -279,7 +279,7 @@ public final class ModGameTests {
     private static void cleanupTestCity(MinecraftServer server, TestCity testCity) {
         for (ChunkPos chunk : testCity.forcedChunks()) {
             ServerLevel level = server.getLevel(Level.OVERWORLD);
-            if (level != null) level.setChunkForced(chunk.x, chunk.z, false);
+            if (level != null) level.setChunkForced(chunk.x(), chunk.z(), false);
         }
         cleanupCity(server, testCity.city().id());
     }
