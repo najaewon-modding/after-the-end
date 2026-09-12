@@ -36,6 +36,7 @@ public final class CityManager {
     public static City getCity(MinecraftServer server, UUID cityId) { return getSavedData(server).getCity(cityId); }
     public static void addCity(MinecraftServer server, City city) { getSavedData(server).addCity(city); }
     public static void addAccessibleCity(MinecraftServer server, City city) { getSavedData(server).addAccessibleCity(city); }
+    public static void renameCity(MinecraftServer server, UUID cityId, String name) { getSavedData(server).renameCity(cityId, name); }
     public static void removeCity(MinecraftServer server, UUID cityId) { getSavedData(server).removeCity(cityId); }
     public static boolean isCityAccessible(MinecraftServer server, UUID cityId) { return getSavedData(server).isCityAccessible(cityId); }
     public static void unlockCity(MinecraftServer server, UUID cityId) { getSavedData(server).unlockCity(cityId); }
