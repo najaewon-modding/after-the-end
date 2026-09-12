@@ -75,10 +75,6 @@ public final class HiddenCityPreparationService {
         FAILED_THIS_SESSION.remove(cityId);
     }
 
-    public static boolean isPreparing(UUID cityId) {
-        return cityId.equals(activeCityId) || QUEUED.contains(cityId);
-    }
-
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         MinecraftServer server = event.getServer();
@@ -94,6 +90,7 @@ public final class HiddenCityPreparationService {
     public static void onServerStopped(ServerStoppedEvent event) {
         resetAll();
         shutdownPlannerExecutor();
+        AltarPlacementPlanner.shutdownVirtualExecutor();
     }
 
     private static void startNext(MinecraftServer server) {
