@@ -6,6 +6,7 @@ on:
       - tmp/resonance-altar-activation
     paths:
       - tools/apply_altar_optimization.py
+      - tools/fix_apply_altar_optimization.py
       - .github/workflows/apply-altar-optimization.yml
 
 permissions:
@@ -29,6 +30,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Apply source patch
         run: |
+          python tools/fix_apply_altar_optimization.py
           python tools/apply_altar_optimization.py
           python - <<'PY'
           from pathlib import Path
