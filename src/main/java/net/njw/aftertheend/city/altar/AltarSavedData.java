@@ -62,26 +62,43 @@ public final class AltarSavedData extends SavedData {
         return count;
     }
 
+    public ActivationClaim claimActivation(UUID cityId, int blockX, int y, int blockZ, int maximumActivated) {
+        int previousActivatedCount = getActivatedCount(cityId);
+        if (previousActivatedCount >= maximumActivated) return new ActivationClaim(false, previousActivatedCount);
+        for (int index = 0; index < placements.size(); index++) {
+            AltarPlacement placement = placements.get(index);
+            if (!sameSite(placement, cityId, blockX, y, blockZ)) continue;
+            if (placement.activated()) return new ActivationClaim(false, previousActivatedCount);
+            replacePlacement(index, placement.withActivated(true));
+            return new ActivationClaim(true, previousActivatedCount);
+        }
+        return new ActivationClaim(false, previousActivatedCount);
+    }
+
     public boolean setActivated(UUID cityId, int blockX, int y, int blockZ, boolean activated) {
         for (int index = 0; index < placements.size(); index++) {
             AltarPlacement placement = placements.get(index);
             if (!sameSite(placement, cityId, blockX, y, blockZ)) continue;
             if (placement.activated() == activated) return true;
-
-            AltarPlacement updated = placement.withActivated(activated);
-            placements.set(index, updated);
-            List<AltarPlacement> cityPlacements = new ArrayList<>(placementsByCity.getOrDefault(cityId, List.of()));
-            for (int cityIndex = 0; cityIndex < cityPlacements.size(); cityIndex++) {
-                if (sameSite(cityPlacements.get(cityIndex), cityId, blockX, y, blockZ)) {
-                    cityPlacements.set(cityIndex, updated);
-                    break;
-                }
-            }
-            placementsByCity.put(cityId, List.copyOf(cityPlacements));
-            setDirty();
+            replacePlacement(index, placement.withActivated(activated));
             return true;
         }
         return false;
+    }
+
+    private void replacePlacement(int index, AltarPlacement updated) {
+        placements.set(index, updated);
+        UUID cityId = updated.cityId();
+        List<AltarPlacement> cityPlacements = new ArrayList<>(placementsByCity.getOrDefault(cityId, List.of()));
+        for (int cityIndex = 0; cityIndex < cityPlacements.size(); cityIndex++) {
+            AltarPlacement current = cityPlacements.get(cityIndex);
+            if (sameSite(current, cityId, updated.blockX(), updated.y(), updated.blockZ())) {
+                cityPlacements.set(cityIndex, updated);
+                break;
+            }
+        }
+        placementsByCity.put(cityId, List.copyOf(cityPlacements));
+        setDirty();
     }
 
     public void markGenerated(UUID cityId, List<AltarPlacement> cityPlacements) {
@@ -114,4 +131,6 @@ public final class AltarSavedData extends SavedData {
         grouped.replaceAll((cityId, cityPlacements) -> List.copyOf(cityPlacements));
         return grouped;
     }
+
+    public record ActivationClaim(boolean claimed, int previousActivatedCount) { }
 }
