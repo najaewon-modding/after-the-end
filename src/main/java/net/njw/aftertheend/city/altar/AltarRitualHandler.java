@@ -24,6 +24,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -74,6 +75,22 @@ public final class AltarRitualHandler {
         }
         if (event.getPlacedBlock().getBlock() instanceof RecordedDragonEggBlock) {
             handleRecordedDragonEggPlaced(level, event.getPos(), player);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onServerStarted(ServerStartedEvent event) {
+        MinecraftServer server = event.getServer();
+        ServerLevel level = server.getLevel(Level.OVERWORLD);
+        if (level == null) return;
+        for (City city : CityManager.getAccessibleCities(server)) {
+            for (AltarPlacement placement : AltarManager.getPlacements(server, city.id())) {
+                if (placement.activated()) continue;
+                AltarSite site = new AltarSite(city.id(), placement, geometry(placement), key(city.id(), placement));
+                boolean canPrepare = canPrepareAltar(server, city.id(), site.key());
+                updateCrystalCalmState(level, site.geometry(), canPrepare);
+                if (canPrepare && hasRitualPattern(level, site.geometry())) tryStartRitual(server, level, site);
+            }
         }
     }
 
@@ -211,6 +228,7 @@ public final class AltarRitualHandler {
         }
 
         RitualGeometry geometry = site.geometry();
+        updateCrystalCalmState(level, geometry, true);
         BlockState eggState = level.getBlockState(geometry.center());
         ItemStack eggStack = createRecordedEggStack(level, geometry.center());
         if (eggStack.isEmpty() || !level.removeBlock(geometry.center(), false)) return;
