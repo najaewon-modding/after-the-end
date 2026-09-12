@@ -1,0 +1,41 @@
+package net.njw.aftertheend.network;
+
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
+import net.njw.aftertheend.city.City;
+import net.njw.aftertheend.city.CityManager;
+import net.njw.aftertheend.city.CityTeleportService;
+import net.njw.aftertheend.city.altar.AltarManager;
+import net.njw.aftertheend.city.altar.AltarPlacement;
+import net.njw.aftertheend.city.altar.AltarTravelAccess;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.minecraft.network.chat.Component;
+
+public final class CityTeleportGate {
+    private CityTeleportGate() { }
+
+    public static void handleRequest(CityTeleportRequestPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)) return;
+        MinecraftServer server = player.level().getServer();
+        City city = CityManager.getCity(server, payload.cityId());
+        if (city != null && CityManager.isCityAccessible(server, payload.cityId()) && !isNearActivatedAltar(player)) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.requires_activated_altar"));
+            return;
+        }
+        CityTeleportService.handleRequest(payload, context);
+    }
+
+    private static boolean isNearActivatedAltar(ServerPlayer player) {
+        if (!player.level().dimension().equals(Level.OVERWORLD)) return false;
+        MinecraftServer server = player.level().getServer();
+        for (City city : CityManager.getAccessibleCities(server)) {
+            for (AltarPlacement altar : AltarManager.getPlacements(server, city.id())) {
+                if (!altar.activated()) continue;
+                if (AltarTravelAccess.isNear(player.getX(), player.getY(), player.getZ(),
+                        altar.blockX(), altar.y(), altar.blockZ(), altar.large())) return true;
+            }
+        }
+        return false;
+    }
+}
