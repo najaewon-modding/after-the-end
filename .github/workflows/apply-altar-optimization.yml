@@ -1,0 +1,51 @@
+name: Apply altar optimization patch
+
+on:
+  push:
+    branches:
+      - tmp/resonance-altar-activation
+    paths:
+      - tools/apply_altar_optimization.py
+      - .github/workflows/apply-altar-optimization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/resonance-altar-activation
+          fetch-depth: 0
+      - name: Setup JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Apply source patch
+        run: |
+          python tools/apply_altar_optimization.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/main/java/net/njw/aftertheend/city/altar/HiddenCityPreparationService.java')
+          s = p.read_text()
+          if 'import java.util.ArrayList;' not in s:
+              s = s.replace('import java.util.ArrayDeque;\n', 'import java.util.ArrayDeque;\nimport java.util.ArrayList;\n', 1)
+          p.write_text(s)
+          PY
+      - name: Build patched sources
+        run: ./gradlew build
+      - name: Commit patched sources
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/main/java/net/njw/aftertheend/city/altar/AltarPlacementPlanner.java \
+                  src/main/java/net/njw/aftertheend/city/altar/AltarPlacementService.java \
+                  src/main/java/net/njw/aftertheend/city/altar/HiddenCityPreparationService.java
+          git commit -m 'perf: optimize robust altar preparation'
+          git push origin HEAD:tmp/resonance-altar-activation
