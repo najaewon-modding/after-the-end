@@ -28,7 +28,7 @@ public final class CityManager {
     public static City getNextLockedCity(MinecraftServer server) {
         if (getAccessibleCities(server).size() >= getMaxCityCount(server)) return null;
         for (City city : getSavedData(server).getLockedCities()) {
-            if (AltarManager.isGenerated(server, city.id())) return city;
+            return AltarManager.isGenerated(server, city.id()) ? city : null;
         }
         return null;
     }
