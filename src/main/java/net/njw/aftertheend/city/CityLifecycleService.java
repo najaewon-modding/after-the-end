@@ -22,12 +22,15 @@ public final class CityLifecycleService {
         City city = CityPlacementService.placeAccessibleCity(server, cityId, cityId.toString());
         generateAltarsOrRollback(server, city);
         finishCityStateChange(server);
+        replenishLockedCityReserve(server, city.id());
         return city;
     }
 
     public static City createLockedCity(MinecraftServer server) {
-        if (CityManager.getLockedCityCount(server) >= LOCKED_CITY_RESERVE_COUNT) {
-            throw new IllegalStateException("Locked city reserve is already full: " + LOCKED_CITY_RESERVE_COUNT + "/" + LOCKED_CITY_RESERVE_COUNT);
+        int target = getLockedCityReserveTarget(server);
+        int current = CityManager.getLockedCityCount(server);
+        if (current >= target) {
+            throw new IllegalStateException("Locked city reserve is already full: " + current + "/" + target);
         }
         City city = createLockedCityInternal(server);
         finishCityStateChange(server);
@@ -35,14 +38,21 @@ public final class CityLifecycleService {
         return city;
     }
 
+    public static int getLockedCityReserveTarget(MinecraftServer server) {
+        int remainingCitySlots = Math.max(0,
+                CityManager.getMaxCityCount(server) - CityManager.getAccessibleCities(server).size());
+        return Math.min(LOCKED_CITY_RESERVE_COUNT, remainingCitySlots);
+    }
+
     public static int ensureLockedCityReserve(MinecraftServer server) {
+        int target = getLockedCityReserveTarget(server);
         int created = 0;
-        while (CityManager.getLockedCityCount(server) < LOCKED_CITY_RESERVE_COUNT) {
+        while (CityManager.getLockedCityCount(server) < target) {
             int slot = CityManager.getLockedCityCount(server) + 1;
-            AfterTheEnd.LOGGER.info("Preparing locked city reserve metadata [{}/{}].", slot, LOCKED_CITY_RESERVE_COUNT);
+            AfterTheEnd.LOGGER.info("Preparing locked city reserve metadata [{}/{}].", slot, target);
             City city = createLockedCityInternal(server);
             created++;
-            AfterTheEnd.LOGGER.info("Prepared locked city reserve metadata [{}/{}]: {}", slot, LOCKED_CITY_RESERVE_COUNT, city.id());
+            AfterTheEnd.LOGGER.info("Prepared locked city reserve metadata [{}/{}]: {}", slot, target, city.id());
         }
         if (created > 0) finishCityStateChange(server);
         HiddenCityPreparationService.refreshQueue(server);
@@ -50,10 +60,7 @@ public final class CityLifecycleService {
     }
 
     public static City getNextReadyLockedCity(MinecraftServer server) {
-        for (City city : CityManager.getLockedCities(server)) {
-            if (AltarManager.isGenerated(server, city.id())) return city;
-        }
-        return null;
+        return CityManager.getNextLockedCity(server);
     }
 
     public static City unlockCity(MinecraftServer server, UUID cityId) {
@@ -65,20 +72,14 @@ public final class CityLifecycleService {
         ensureCanAddUnlockedCity(server);
 
         CityManager.unlockCity(server, cityId);
-        try {
-            ensureLockedCityReserve(server);
-        } catch (RuntimeException exception) {
-            AfterTheEnd.LOGGER.error("City {} was unlocked, but the hidden-city reserve could not be replenished immediately.", cityId, exception);
-        }
         finishCityStateChange(server);
-        HiddenCityPreparationService.refreshQueue(server);
+        replenishLockedCityReserve(server, cityId);
         return city;
     }
 
     public static void deleteCity(MinecraftServer server, UUID cityId) {
         if (CityRegistry.STARTING_CITY_ID.equals(cityId)) throw new IllegalArgumentException("Starting city cannot be deleted.");
         City city = requireCity(server, cityId);
-        boolean wasLocked = !CityManager.isCityAccessible(server, cityId);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (city.contains(player.level().dimension(), player.getBlockX(), player.getBlockZ())) {
                 throw new IllegalStateException("Cannot delete city while player " + player.getName().getString() + " is inside it.");
@@ -88,14 +89,23 @@ public final class CityLifecycleService {
         CityPregenerationHandler.removeCity(cityId);
         AltarManager.removeCity(server, cityId);
         CityManager.removeCity(server, cityId);
-        if (wasLocked) ensureLockedCityReserve(server);
         finishCityStateChange(server);
-        HiddenCityPreparationService.refreshQueue(server);
+        replenishLockedCityReserve(server, cityId);
     }
 
     public static void setMaxCityCount(MinecraftServer server, int maxCityCount) {
         CityManager.setMaxCityCount(server, maxCityCount);
-        CitySyncService.syncToAll(server);
+        int created = ensureLockedCityReserve(server);
+        if (created == 0) CitySyncService.syncToAll(server);
+    }
+
+    private static void replenishLockedCityReserve(MinecraftServer server, UUID changedCityId) {
+        try {
+            ensureLockedCityReserve(server);
+        } catch (RuntimeException exception) {
+            AfterTheEnd.LOGGER.error("City state changed for {}, but the hidden-city reserve could not be replenished immediately.",
+                    changedCityId, exception);
+        }
     }
 
     private static City createLockedCityInternal(MinecraftServer server) {
