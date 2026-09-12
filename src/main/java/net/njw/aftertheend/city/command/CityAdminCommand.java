@@ -124,10 +124,11 @@ public final class CityAdminCommand {
         var cities = CityManager.getCities(server);
         int unlockedCount = CityManager.getAccessibleCities(server).size();
         int lockedCount = CityManager.getLockedCityCount(server);
+        int reserveTarget = CityLifecycleService.getLockedCityReserveTarget(server);
         source.sendSuccess(() -> Component.translatable(
                 "command.njw_after_the_end.city.summary",
                 cities.size(), unlockedCount, CityManager.getMaxCityCount(server),
-                lockedCount, CityLifecycleService.LOCKED_CITY_RESERVE_COUNT
+                lockedCount, reserveTarget
         ), false);
         for (City city : cities) {
             Component state = Component.translatable(CityManager.isCityAccessible(server, city.id())
