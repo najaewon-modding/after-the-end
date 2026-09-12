@@ -13,6 +13,8 @@
   "gui.njw_after_the_end.city_list.dimension.nether": "Nether",
   "gui.njw_after_the_end.city_list.coordinates": "X %s  Z %s",
   "gui.njw_after_the_end.city_list.move": "Move",
+  "gui.njw_after_the_end.city_list.save": "Save",
+  "gui.njw_after_the_end.city_list.edit_name": "City name",
   "gui.njw_after_the_end.city_list.close": "Close",
 
   "message.njw_after_the_end.boundary.return_warning": "Return to the unlocked city area within %s seconds.",
