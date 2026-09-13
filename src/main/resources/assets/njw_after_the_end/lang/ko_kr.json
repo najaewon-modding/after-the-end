@@ -2,6 +2,7 @@
   "key.category.njw_after_the_end.city": "After the End",
   "key.njw_after_the_end.open_city_list": "도시 목록 열기",
   "key.njw_after_the_end.set_arrival_altar": "도착 제단 지정",
+  "config.njw_after_the_end.give_guide_book_on_join": "접속 시 가이드 책 지급",
 
   "item.njw_after_the_end.shulker_core": "셜커 코어",
   "item.njw_after_the_end.replication_pill": "복제 알약",
