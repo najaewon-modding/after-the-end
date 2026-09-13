@@ -5,7 +5,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.city.altar.AltarManager;
-import net.njw.aftertheend.city.altar.AltarPlacementService;
 import net.njw.aftertheend.city.altar.HiddenCityPreparationService;
 import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 import net.njw.aftertheend.city.placement.CityPlacementService;
@@ -20,9 +19,9 @@ public final class CityLifecycleService {
         ensureCanAddUnlockedCity(server);
         UUID cityId = newCityId(server);
         City city = CityPlacementService.placeAccessibleCity(server, cityId, cityId.toString());
-        generateAltarsOrRollback(server, city);
         finishCityStateChange(server);
         replenishLockedCityReserve(server, city.id());
+        HiddenCityPreparationService.refreshQueue(server);
         return city;
     }
 
@@ -116,17 +115,6 @@ public final class CityLifecycleService {
     private static City createLockedCityInternal(MinecraftServer server) {
         UUID cityId = newCityId(server);
         return CityPlacementService.placeLockedCity(server, cityId, cityId.toString());
-    }
-
-    private static void generateAltarsOrRollback(MinecraftServer server, City city) {
-        try {
-            AltarPlacementService.ensureGenerated(server, city);
-        } catch (RuntimeException exception) {
-            AltarManager.removeCity(server, city.id());
-            CityManager.removeCity(server, city.id());
-            PlayerPositionTracker.invalidateAllCityCaches();
-            throw exception;
-        }
     }
 
     private static UUID newCityId(MinecraftServer server) {
