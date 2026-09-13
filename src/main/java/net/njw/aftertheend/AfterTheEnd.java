@@ -40,7 +40,7 @@ public final class AfterTheEnd {
         ModGameTests.register(modEventBus);
         modEventBus.addListener(CityNetworkHandler::registerPayloads);
         modContainer.registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC);
-        if (FMLEnvironment.dist.isClient()) {
+        if (FMLEnvironment.getDist().isClient()) {
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
         }
         NeoForge.EVENT_BUS.register(CityBoundaryHandler.class);
