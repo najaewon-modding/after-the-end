@@ -36,8 +36,8 @@ class AltarActivationPolicyTest {
 
     @Test
     void dragonEggMustMeetOrExceedCityRank() {
-        assertFalse(AltarRitualHandler.isDragonEggRankSufficient(2, 3));
-        assertTrue(AltarRitualHandler.isDragonEggRankSufficient(3, 3));
-        assertTrue(AltarRitualHandler.isDragonEggRankSufficient(4, 3));
+        assertFalse(AltarActivationPolicy.isDragonEggRankSufficient(2, 3));
+        assertTrue(AltarActivationPolicy.isDragonEggRankSufficient(3, 3));
+        assertTrue(AltarActivationPolicy.isDragonEggRankSufficient(4, 3));
     }
 }
