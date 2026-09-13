@@ -221,24 +221,25 @@ public final class ModGameTests {
     private static void lowRankDragonEggTeleports(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         MinecraftServer server = level.getServer();
-        int oldMax = CityManager.getMaxCityCount(server);
-        TestCity testCity = createTestCity(server, new BlockPos(8000, TEST_Y, 8000), 1, 0);
-        AltarPlacement placement = testCity.placements().getFirst();
-        RitualGeometry geometry = geometry(placement);
-        int requiredDragonNumber = cityNumber(server, testCity.city().id());
-        if (requiredDragonNumber <= 1) {
-            cleanupTestCity(server, testCity);
-            restoreMaxCityCount(server, oldMax);
-            helper.fail("Low-rank Dragon Egg test requires a city rank above 1.");
+        City startingCity = CityManager.getStartingCity(server);
+        List<AltarPlacement> inactive = AltarManager.getPlacements(server, startingCity.id()).stream()
+                .filter(placement -> !placement.activated()).limit(2).toList();
+        if (inactive.size() < 2) {
+            helper.fail("Low-rank Dragon Egg test requires two inactive starting-city Altars.");
             return;
         }
-        CityManager.setMaxCityCount(server, Math.max(oldMax, CityManager.getAccessibleCities(server).size() + 1));
+
+        AltarPlacement guardAltar = inactive.get(0);
+        AltarPlacement targetAltar = inactive.get(1);
+        AltarManager.setActivated(server, startingCity.id(), guardAltar.blockX(), guardAltar.y(), guardAltar.blockZ(), true);
+        RitualGeometry geometry = geometry(targetAltar);
+        Set<ChunkPos> forcedChunks = forceAltarChunks(level, List.of(targetAltar));
         buildTeleportPlatform(level, geometry.center());
         for (BlockPos socket : geometry.sockets()) {
             level.setBlock(socket, ModContent.RESONANCE_CRYSTAL.get().defaultBlockState(), 3);
             AltarRitualHandler.handlePlacedBlock(level, socket, null);
         }
-        placeRecordedDragonEgg(level, geometry.center(), requiredDragonNumber - 1);
+        placeRecordedDragonEgg(level, geometry.center(), 0);
         Player player = helper.makeMockPlayer(GameType.CREATIVE);
         AltarRitualHandler.handlePlacedBlock(level, geometry.center(), player);
 
@@ -248,14 +249,15 @@ public final class ModGameTests {
                     helper.fail("Low-rank Recorded Dragon Egg did not teleport away from the Altar.");
                     return;
                 }
-                if (AltarManager.getActivatedCount(server, testCity.city().id()) != 0) {
-                    helper.fail("Altar activated with a Dragon Egg below the city's required rank.");
+                if (AltarManager.getActivatedCount(server, startingCity.id()) != 1) {
+                    helper.fail("Target Altar activated with a Dragon Egg below the city's required rank.");
                     return;
                 }
                 helper.succeed();
             } finally {
-                cleanupTestCity(server, testCity);
-                restoreMaxCityCount(server, oldMax);
+                AltarManager.setActivated(server, startingCity.id(), guardAltar.blockX(), guardAltar.y(), guardAltar.blockZ(), false);
+                for (ChunkPos chunk : forcedChunks) level.setChunkForced(chunk.x(), chunk.z(), false);
+                for (BlockPos socket : geometry.sockets()) level.removeBlock(socket, false);
                 player.discard();
             }
         });
@@ -280,15 +282,6 @@ public final class ModGameTests {
         AltarManager.markGenerated(server, cityId, placements);
         Set<ChunkPos> forcedChunks = forceAltarChunks(server.getLevel(Level.OVERWORLD), placements);
         return new TestCity(city, List.copyOf(placements), forcedChunks);
-    }
-
-    private static int cityNumber(MinecraftServer server, UUID cityId) {
-        int number = 1;
-        for (City city : CityManager.getCities(server)) {
-            if (city.id().equals(cityId)) return number;
-            number++;
-        }
-        return Integer.MAX_VALUE;
     }
 
     private static Set<ChunkPos> forceAltarChunks(ServerLevel level, List<AltarPlacement> placements) {
