@@ -27,7 +27,7 @@ public final class CityTeleportGate {
                 server, Level.OVERWORLD, player.getBlockX(), player.getBlockZ()
         );
         if (currentCity == null) {
-            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.not_in_city"));
+            player.sendOverlayMessage(Component.translatable("command.njw_after_the_end.altar.not_in_city"));
             return;
         }
 
