@@ -23,9 +23,17 @@ public final class CityTeleportGate {
             return;
         }
         MinecraftServer server = player.level().getServer();
+        City currentCity = CityManager.findAccessibleCityContaining(
+                server, Level.OVERWORLD, player.getBlockX(), player.getBlockZ()
+        );
+        if (currentCity == null) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.not_in_city"));
+            return;
+        }
+
         City city = CityManager.getCity(server, payload.cityId());
         if (city != null && CityManager.isCityAccessible(server, payload.cityId())
-                && !canTravelWithoutActivatedAltar(server, player, payload.cityId())
+                && !canTravelWithoutActivatedAltar(server, currentCity, payload.cityId())
                 && !isInsideActivatedAltar(player)) {
             player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.requires_activated_altar"));
             return;
@@ -33,12 +41,7 @@ public final class CityTeleportGate {
         CityTeleportService.handleRequest(payload, context);
     }
 
-    private static boolean canTravelWithoutActivatedAltar(MinecraftServer server, ServerPlayer player, java.util.UUID targetCityId) {
-        City currentCity = CityManager.findAccessibleCityContaining(
-                server, Level.OVERWORLD, player.getBlockX(), player.getBlockZ()
-        );
-        if (currentCity == null) return false;
-
+    private static boolean canTravelWithoutActivatedAltar(MinecraftServer server, City currentCity, java.util.UUID targetCityId) {
         int currentIndex = -1;
         int targetIndex = -1;
         int index = 0;
