@@ -39,8 +39,8 @@ public final class CityRecallClientSound {
             this.playerId = playerId;
             this.looping = true;
             this.delay = 0;
-            this.volume = 0.38F;
-            this.pitch = 0.70F;
+            this.volume = 0.72F;
+            this.pitch = 1.0F;
             this.attenuation = SoundInstance.Attenuation.LINEAR;
         }
 
@@ -59,9 +59,10 @@ public final class CityRecallClientSound {
             this.x = player.getX();
             this.y = player.getY() + 0.9D;
             this.z = player.getZ();
-            float progress = Math.min(1.0F, age / 160.0F);
-            this.volume = 0.38F + progress * 0.14F;
-            this.pitch = 0.70F + progress * 0.18F;
+            float finalPhase = Math.clamp((age - 140.0F) / 20.0F, 0.0F, 1.0F);
+            float emphasis = finalPhase * finalPhase;
+            this.volume = 0.72F + emphasis * 0.28F;
+            this.pitch = 1.0F;
         }
 
         private void stopNow() {
