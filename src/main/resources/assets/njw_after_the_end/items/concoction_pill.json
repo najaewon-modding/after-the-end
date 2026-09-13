@@ -1,0 +1,12 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "njw_after_the_end:item/villager_pill",
+    "tints": [
+      {
+        "type": "minecraft:constant",
+        "value": -2072367
+      }
+    ]
+  }
+}
