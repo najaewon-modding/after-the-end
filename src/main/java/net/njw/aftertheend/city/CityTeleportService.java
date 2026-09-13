@@ -42,7 +42,7 @@ import java.util.UUID;
 
 public final class CityTeleportService {
     private static final long CAST_DURATION_NANOS = 3_000_000_000L;
-    private static final long ARRIVAL_CAST_DURATION_NANOS = 5_000_000_000L;
+    private static final long ARRIVAL_CAST_DURATION_NANOS = 3_000_000_000L;
     private static final long COOLDOWN_DURATION_NANOS = 3_000_000_000L;
     private static final long GLOBAL_SEARCH_BUDGET_NANOS_PER_TICK = 5_000_000L;
     private static final double MOVEMENT_CANCEL_DISTANCE_SQUARED = 0.01D;
@@ -52,6 +52,7 @@ public final class CityTeleportService {
     private static final int RADIAL_DIRECTION_COUNT = 16;
     private static final int LOCAL_SEARCH_RADIUS = 2;
     private static final int ALTAR_SEARCH_MARGIN = 3;
+    private static final int ALTAR_CENTER_STANDING_Y_OFFSET = 3;
     private static final int MONSTER_CHECK_INTERVAL_TICKS = 5;
     private static final double MONSTER_HORIZONTAL_RANGE = 8.0D;
     private static final double MONSTER_VERTICAL_RANGE = 5.0D;
@@ -157,14 +158,12 @@ public final class CityTeleportService {
         }
 
         long now = System.nanoTime();
-        boolean originalShiftDown = player.isShiftKeyDown();
-        player.setShiftKeyDown(true);
         ServerBossEvent bossBar = createBossBar(
                 level, player, Component.translatable("message.njw_after_the_end.arrival_altar.boss_bar")
         );
         ACTIVE_ARRIVAL_CASTS.put(playerId, new ArrivalCastSession(
                 city.id(), level.dimension(), altar.blockX(), altar.y(), altar.blockZ(),
-                player.position(), now, now + ARRIVAL_CAST_DURATION_NANOS, bossBar, originalShiftDown
+                player.position(), now, now + ARRIVAL_CAST_DURATION_NANOS, bossBar
         ));
         player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.arrival_altar.preparing"));
     }
@@ -239,12 +238,11 @@ public final class CityTeleportService {
             ArrivalCastSession session = ACTIVE_ARRIVAL_CASTS.get(playerId);
             if (session == null) continue;
             ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-            if (player == null) { removeArrivalCastSession(playerId, null); continue; }
+            if (player == null) { removeArrivalCastSession(playerId); continue; }
             if (!player.isAlive()) { cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted"); continue; }
             if (!player.level().dimension().equals(session.dimension)) { cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted_dimension"); continue; }
             if (player.position().distanceToSqr(session.startPosition) > MOVEMENT_CANCEL_DISTANCE_SQUARED) { cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted_movement"); continue; }
 
-            player.setShiftKeyDown(true);
             session.ticks++;
             if (session.ticks % MONSTER_CHECK_INTERVAL_TICKS == 0 && hasRestPreventingMonsterNearby(player)) {
                 cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted_monsters");
@@ -272,7 +270,7 @@ public final class CityTeleportService {
             }
 
             CityManager.setCityArrivalAltar(server, city.id(), Level.OVERWORLD, altar.blockX(), altar.y(), altar.blockZ());
-            removeArrivalCastSession(playerId, player);
+            removeArrivalCastSession(playerId);
             player.sendOverlayMessage(Component.translatable(
                     "message.njw_after_the_end.arrival_altar.saved", Component.literal(city.name())
             ));
@@ -291,7 +289,7 @@ public final class CityTeleportService {
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         removeCastSession(player.getUUID());
-        removeArrivalCastSession(player.getUUID(), player);
+        removeArrivalCastSession(player.getUUID());
     }
 
     @SubscribeEvent
@@ -367,7 +365,7 @@ public final class CityTeleportService {
 
     private static void cancelArrivalCast(ServerPlayer player, String translationKey) {
         if (!ACTIVE_ARRIVAL_CASTS.containsKey(player.getUUID())) return;
-        removeArrivalCastSession(player.getUUID(), player);
+        removeArrivalCastSession(player.getUUID());
         player.sendOverlayMessage(Component.translatable(translationKey));
     }
 
@@ -376,11 +374,9 @@ public final class CityTeleportService {
         if (session != null) closeBossBar(session.bossBar);
     }
 
-    private static void removeArrivalCastSession(UUID playerId, ServerPlayer player) {
+    private static void removeArrivalCastSession(UUID playerId) {
         ArrivalCastSession session = ACTIVE_ARRIVAL_CASTS.remove(playerId);
-        if (session == null) return;
-        closeBossBar(session.bossBar);
-        if (player != null) player.setShiftKeyDown(session.originalShiftDown);
+        if (session != null) closeBossBar(session.bossBar);
     }
 
     private static ServerBossEvent createBossBar(ServerLevel level, ServerPlayer player, Component title) {
@@ -427,6 +423,7 @@ public final class CityTeleportService {
         private final List<SearchOffset> altarOffsets;
         private final Set<Long> loadedChunks = new HashSet<>();
         private SearchStage stage;
+        private int altarOffsetIndex;
         private int offsetIndex;
         private int localIndex;
         private int localCenterX;
@@ -439,7 +436,7 @@ public final class CityTeleportService {
             this.region = region;
             this.altar = altar;
             this.altarOffsets = altar == null ? List.of() : (altar.large() ? LARGE_ALTAR_OFFSETS : SMALL_ALTAR_OFFSETS);
-            this.stage = altar == null ? SearchStage.SELECT_CANDIDATE : SearchStage.ALTAR;
+            this.stage = altar == null ? SearchStage.SELECT_CANDIDATE : SearchStage.ALTAR_CENTER;
         }
 
         private void advance(long budgetNanos) {
@@ -449,19 +446,49 @@ public final class CityTeleportService {
 
         private void advanceOne() {
             switch (stage) {
-                case ALTAR -> inspectAltarCandidate();
+                case ALTAR_CENTER -> inspectAltarCenter();
+                case ALTAR_TOP -> inspectAltarTop();
+                case ALTAR_SURROUNDINGS -> inspectAltarSurrounding();
                 case SELECT_CANDIDATE -> selectCandidate();
                 case LOCAL -> inspectLocalCandidate();
                 case COMPLETE -> { }
             }
         }
 
-        private void inspectAltarCandidate() {
-            if (offsetIndex >= altarOffsets.size()) {
+        private void inspectAltarCenter() {
+            int x = altar.blockX() + AltarTravelAccess.centerOffset(altar.large());
+            int z = altar.blockZ() + AltarTravelAccess.centerOffset(altar.large());
+            int y = altar.y() + ALTAR_CENTER_STANDING_Y_OFFSET;
+            candidatesChecked++;
+            ensureChunkLoaded(x, z);
+            if (region.containsBlock(x, z) && isSafeStandingPosition(level, x, y, z)) {
+                destination = new SafeDestination(x, y, z);
                 stage = SearchStage.COMPLETE;
                 return;
             }
-            SearchOffset offset = altarOffsets.get(offsetIndex++);
+            stage = SearchStage.ALTAR_TOP;
+        }
+
+        private void inspectAltarTop() {
+            int x = altar.blockX() + AltarTravelAccess.centerOffset(altar.large());
+            int z = altar.blockZ() + AltarTravelAccess.centerOffset(altar.large());
+            int y = altar.y() + AltarTravelAccess.structureHeight(altar.large());
+            candidatesChecked++;
+            ensureChunkLoaded(x, z);
+            if (region.containsBlock(x, z) && isSafeStandingPosition(level, x, y, z)) {
+                destination = new SafeDestination(x, y, z);
+                stage = SearchStage.COMPLETE;
+                return;
+            }
+            stage = SearchStage.ALTAR_SURROUNDINGS;
+        }
+
+        private void inspectAltarSurrounding() {
+            if (altarOffsetIndex >= altarOffsets.size()) {
+                stage = SearchStage.SELECT_CANDIDATE;
+                return;
+            }
+            SearchOffset offset = altarOffsets.get(altarOffsetIndex++);
             int centerX = altar.blockX() + AltarTravelAccess.centerOffset(altar.large());
             int centerZ = altar.blockZ() + AltarTravelAccess.centerOffset(altar.large());
             int x = centerX + offset.dx();
@@ -593,25 +620,19 @@ public final class CityTeleportService {
     }
 
     private static List<SearchOffset> createAltarSearchOffsets(boolean large) {
-        int half = AltarTravelAccess.centerOffset(large);
-        int radius = half + ALTAR_SEARCH_MARGIN;
-        List<SearchOffset> outside = new ArrayList<>();
-        List<SearchOffset> inside = new ArrayList<>();
+        int radius = AltarTravelAccess.centerOffset(large) + ALTAR_SEARCH_MARGIN;
+        List<SearchOffset> result = new ArrayList<>();
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
-                SearchOffset offset = new SearchOffset(dx, dz, dx * dx + dz * dz);
-                if (Math.abs(dx) > half || Math.abs(dz) > half) outside.add(offset);
-                else inside.add(offset);
+                if (dx == 0 && dz == 0) continue;
+                result.add(new SearchOffset(dx, dz, dx * dx + dz * dz));
             }
         }
-        Comparator<SearchOffset> byDistance = Comparator.comparingInt(SearchOffset::distanceSquared);
-        outside.sort(byDistance);
-        inside.sort(byDistance);
-        outside.addAll(inside);
-        return List.copyOf(outside);
+        result.sort(Comparator.comparingInt(SearchOffset::distanceSquared));
+        return List.copyOf(result);
     }
 
-    private enum SearchStage { ALTAR, SELECT_CANDIDATE, LOCAL, COMPLETE }
+    private enum SearchStage { ALTAR_CENTER, ALTAR_TOP, ALTAR_SURROUNDINGS, SELECT_CANDIDATE, LOCAL, COMPLETE }
     private record SearchOffset(int dx, int dz, int distanceSquared) { }
     private record SafeDestination(int blockX, int y, int blockZ) { }
 
@@ -647,12 +668,10 @@ public final class CityTeleportService {
         private final long startedAtNanos;
         private final long completesAtNanos;
         private final ServerBossEvent bossBar;
-        private final boolean originalShiftDown;
         private int ticks;
 
         private ArrivalCastSession(UUID cityId, ResourceKey<Level> dimension, int altarBlockX, int altarY, int altarBlockZ,
-                                   Vec3 startPosition, long startedAtNanos, long completesAtNanos,
-                                   ServerBossEvent bossBar, boolean originalShiftDown) {
+                                   Vec3 startPosition, long startedAtNanos, long completesAtNanos, ServerBossEvent bossBar) {
             this.cityId = cityId;
             this.dimension = dimension;
             this.altarBlockX = altarBlockX;
@@ -662,7 +681,6 @@ public final class CityTeleportService {
             this.startedAtNanos = startedAtNanos;
             this.completesAtNanos = completesAtNanos;
             this.bossBar = bossBar;
-            this.originalShiftDown = originalShiftDown;
         }
     }
 }
