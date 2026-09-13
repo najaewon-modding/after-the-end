@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "minecraft:item/heart_of_the_sea"
+    "layer0": "njw_after_the_end:item/villager_pill"
   }
 }
