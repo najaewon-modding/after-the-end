@@ -17,6 +17,7 @@ import net.njw.aftertheend.city.command.CityAdminCommand;
 import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 import net.njw.aftertheend.city.structure.EnderEyeHandler;
 import net.njw.aftertheend.city.structure.StructureRequirementHandler;
+import net.njw.aftertheend.command.PillCommand;
 import net.njw.aftertheend.event.ShulkerCoreDropHandler;
 import net.njw.aftertheend.gametest.ModGameTests;
 import net.njw.aftertheend.network.CityNetworkHandler;
@@ -43,6 +44,7 @@ public final class AfterTheEnd {
         NeoForge.EVENT_BUS.register(AltarCommand.class);
         NeoForge.EVENT_BUS.register(CityPregenerationHandler.class);
         NeoForge.EVENT_BUS.register(CityAdminCommand.class);
+        NeoForge.EVENT_BUS.register(PillCommand.class);
         NeoForge.EVENT_BUS.register(CitySyncService.class);
         NeoForge.EVENT_BUS.register(CityTeleportService.class);
         NeoForge.EVENT_BUS.register(CityMoveRecallEffect.class);
