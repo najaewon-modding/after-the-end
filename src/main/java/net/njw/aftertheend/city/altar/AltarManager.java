@@ -7,8 +7,15 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.njw.aftertheend.AfterTheEnd;
 
 public final class AltarManager {
+    private static final int[][] HIDDEN_CHEST_OFFSETS = {
+            {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+            {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+    };
+
     private AltarManager() { }
 
     private static AltarSavedData getSavedData(MinecraftServer server) {
@@ -50,13 +57,30 @@ public final class AltarManager {
         ServerLevel level = server.getLevel(Level.OVERWORLD);
         if (level == null) return;
         for (AltarPlacement placement : placements) {
-            int centerOffset = placement.large() ? 13 : 5;
-            BlockPos chestPos = new BlockPos(
-                    placement.blockX() + centerOffset,
-                    placement.y() + 1,
-                    placement.blockZ() + centerOffset
-            );
+            BlockPos chestPos = findHiddenRewardChestPosition(level, placement);
+            if (chestPos == null) {
+                AfterTheEnd.LOGGER.warn(
+                        "Could not find a covered second-floor reward chest position for Altar at {},{},{}",
+                        placement.blockX(), placement.y(), placement.blockZ()
+                );
+                continue;
+            }
             level.setBlock(chestPos, Blocks.CHEST.defaultBlockState(), 3);
         }
+    }
+
+    private static BlockPos findHiddenRewardChestPosition(ServerLevel level, AltarPlacement placement) {
+        int centerOffset = placement.large() ? 13 : 5;
+        int centerX = placement.blockX() + centerOffset;
+        int centerZ = placement.blockZ() + centerOffset;
+        int secondFloorY = placement.y() + 1;
+
+        for (int[] offset : HIDDEN_CHEST_OFFSETS) {
+            BlockPos candidate = new BlockPos(centerX + offset[0], secondFloorY, centerZ + offset[1]);
+            BlockState secondFloor = level.getBlockState(candidate);
+            BlockState thirdFloorCover = level.getBlockState(candidate.above());
+            if (secondFloor.canOcclude() && thirdFloorCover.canOcclude()) return candidate;
+        }
+        return null;
     }
 }
