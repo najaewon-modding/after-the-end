@@ -11,4 +11,8 @@ final class AltarActivationPolicy {
     static boolean unlocksCity(int activatedCount, int maxActivatedAltars, int unlockedCityCount, int maxCityCount) {
         return activatedCount == 0 && canActivate(activatedCount, maxActivatedAltars, unlockedCityCount, maxCityCount);
     }
+
+    static boolean isDragonEggRankSufficient(int dragonNumber, int requiredDragonNumber) {
+        return dragonNumber >= requiredDragonNumber;
+    }
 }
