@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.njw.aftertheend.city.CityRegion;
+import net.njw.aftertheend.city.CityTravelAccessPolicy;
 import net.njw.aftertheend.city.altar.AltarTravelAccess;
 import net.njw.aftertheend.client.ClientCityManager;
 import net.njw.aftertheend.network.CityRenameRequestPayload;
@@ -198,7 +199,7 @@ public final class CityListScreen extends Screen {
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         ClientCityManager.ClientCity city = getSelectedCity();
         boolean editing = city != null && isEditing(city);
-        boolean primaryEnabled = editing ? isValidEditedName() : city != null && city.unlocked() && isNearActivatedAltar();
+        boolean primaryEnabled = editing ? isValidEditedName() : canMoveTo(city);
         Component primaryLabel = Component.translatable(editing
                 ? "gui.njw_after_the_end.city_list.save"
                 : "gui.njw_after_the_end.city_list.move");
@@ -267,7 +268,7 @@ public final class CityListScreen extends Screen {
                 if (isValidEditedName()) saveEditedName(selectedCity);
                 return true;
             }
-            if (selectedCity.unlocked() && isNearActivatedAltar()) {
+            if (canMoveTo(selectedCity)) {
                 ClientPacketDistributor.sendToServer(new CityTeleportRequestPayload(selectedCity.id()));
                 onClose();
                 return true;
@@ -355,9 +356,32 @@ public final class CityListScreen extends Screen {
         int primaryX = left + (CONTENT_WIDTH - totalWidth) / 2;
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         int closeX = primaryX + BUTTON_WIDTH + BUTTON_GAP;
-        boolean primaryEnabled = city != null && (isEditing(city) ? isValidEditedName() : city.unlocked() && isNearActivatedAltar());
+        boolean primaryEnabled = city != null && (isEditing(city) ? isValidEditedName() : canMoveTo(city));
         return primaryEnabled && isInside(mouseX, mouseY, primaryX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
                 || isInside(mouseX, mouseY, closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT);
+    }
+
+    private boolean canMoveTo(ClientCityManager.ClientCity targetCity) {
+        return targetCity != null && targetCity.unlocked()
+                && (isLowerCityThanCurrent(targetCity) || isNearActivatedAltar());
+    }
+
+    private boolean isLowerCityThanCurrent(ClientCityManager.ClientCity targetCity) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.level == null || !minecraft.level.dimension().equals(Level.OVERWORLD)) return false;
+
+        List<ClientCityManager.ClientCity> cities = ClientCityManager.getCities();
+        int currentIndex = -1;
+        int targetIndex = -1;
+        int playerX = minecraft.player.getBlockX();
+        int playerZ = minecraft.player.getBlockZ();
+        for (int index = 0; index < cities.size(); index++) {
+            ClientCityManager.ClientCity city = cities.get(index);
+            if (city.id().equals(targetCity.id())) targetIndex = index;
+            CityRegion region = city.getRegion(Level.OVERWORLD.identifier());
+            if (city.unlocked() && region != null && region.containsBlock(playerX, playerZ)) currentIndex = index;
+        }
+        return CityTravelAccessPolicy.canTravelWithoutActivatedAltar(currentIndex, targetIndex);
     }
 
     private boolean isNearActivatedAltar() {
