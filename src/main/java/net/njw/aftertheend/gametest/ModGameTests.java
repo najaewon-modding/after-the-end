@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -32,6 +33,8 @@ import net.njw.aftertheend.city.altar.AltarPlacement;
 import net.njw.aftertheend.city.altar.AltarRitualHandler;
 import net.njw.aftertheend.registry.ModContent;
 import net.njw.justdragoneggs.block.RecordedDragonEggBlock;
+import net.njw.justdragoneggs.block.entity.RecordedDragonEggBlockEntity;
+import net.njw.justdragoneggs.dragon.DragonBattleRecord;
 
 public final class ModGameTests {
     private static final BlockPos CRYSTAL_POS = new BlockPos(5, 4, 5);
@@ -39,6 +42,7 @@ public final class ModGameTests {
     private static final long CRYSTAL_CHECK_DELAY_TICKS = 45L;
     private static final long RITUAL_CHECK_DELAY_TICKS = 205L;
     private static final int TEST_Y = 197;
+    private static final int TEST_DRAGON_NUMBER = 999;
 
     private static final DeferredRegister<Consumer<GameTestHelper>> TEST_FUNCTIONS =
             DeferredRegister.create(BuiltInRegistries.TEST_FUNCTION, AfterTheEnd.MODID);
@@ -186,7 +190,7 @@ public final class ModGameTests {
             }
         }
 
-        level.setBlock(geometry.center(), net.njw.justdragoneggs.registry.ModContent.RECORDED_DRAGON_EGG.get().defaultBlockState(), 3);
+        placeRecordedDragonEgg(level, geometry.center(), TEST_DRAGON_NUMBER);
         Player player = helper.makeMockPlayer(GameType.CREATIVE);
         AltarRitualHandler.handlePlacedBlock(level, geometry.center(), player);
         helper.runAfterDelay(5L, () -> {
@@ -254,8 +258,18 @@ public final class ModGameTests {
             level.setBlock(socket, ModContent.RESONANCE_CRYSTAL.get().defaultBlockState(), 3);
             AltarRitualHandler.handlePlacedBlock(level, socket, player);
         }
-        level.setBlock(geometry.center(), net.njw.justdragoneggs.registry.ModContent.RECORDED_DRAGON_EGG.get().defaultBlockState(), 3);
+        placeRecordedDragonEgg(level, geometry.center(), TEST_DRAGON_NUMBER);
         AltarRitualHandler.handlePlacedBlock(level, geometry.center(), player);
+    }
+
+    private static void placeRecordedDragonEgg(ServerLevel level, BlockPos pos, int dragonNumber) {
+        level.setBlock(pos, net.njw.justdragoneggs.registry.ModContent.RECORDED_DRAGON_EGG.get().defaultBlockState(), 3);
+        if (level.getBlockEntity(pos) instanceof RecordedDragonEggBlockEntity egg) {
+            egg.setRecord(new DragonBattleRecord(
+                    dragonNumber, UUID.randomUUID(), Optional.empty(), Optional.empty(),
+                    level.getGameTime(), List.of(), List.of(), 0.0D, 200.0D
+            ));
+        }
     }
 
     private static RitualGeometry geometry(AltarPlacement placement) {
