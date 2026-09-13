@@ -4,6 +4,10 @@ import com.mojang.logging.LogUtils;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import net.njw.aftertheend.city.CityBoundaryHandler;
 import net.njw.aftertheend.city.CityInteractionHandler;
@@ -18,6 +22,7 @@ import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 import net.njw.aftertheend.city.structure.EnderEyeHandler;
 import net.njw.aftertheend.city.structure.StructureRequirementHandler;
 import net.njw.aftertheend.command.PillCommand;
+import net.njw.aftertheend.config.ClientConfig;
 import net.njw.aftertheend.event.ShulkerCoreDropHandler;
 import net.njw.aftertheend.gametest.ModGameTests;
 import net.njw.aftertheend.network.CityNetworkHandler;
@@ -34,6 +39,10 @@ public final class AfterTheEnd {
         ModContent.register(modEventBus);
         ModGameTests.register(modEventBus);
         modEventBus.addListener(CityNetworkHandler::registerPayloads);
+        modContainer.registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC);
+        if (FMLEnvironment.dist.isClient()) {
+            modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
+        }
         NeoForge.EVENT_BUS.register(CityBoundaryHandler.class);
         NeoForge.EVENT_BUS.register(CityInteractionHandler.class);
         NeoForge.EVENT_BUS.register(StructureRequirementHandler.class);

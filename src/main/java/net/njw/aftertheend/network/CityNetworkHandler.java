@@ -5,7 +5,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.njw.aftertheend.city.CityTeleportService;
 
 public final class CityNetworkHandler {
-    private static final String NETWORK_VERSION = "6";
+    private static final String NETWORK_VERSION = "7";
 
     private CityNetworkHandler() { }
 
@@ -17,5 +17,6 @@ public final class CityNetworkHandler {
         registrar.playToServer(CityTeleportRequestPayload.TYPE, CityTeleportRequestPayload.STREAM_CODEC, CityTeleportGate::handleRequest);
         registrar.playToServer(CityArrivalAltarRequestPayload.TYPE, CityArrivalAltarRequestPayload.STREAM_CODEC, CityTeleportService::handleArrivalAltarRequest);
         registrar.playToServer(CityRenameRequestPayload.TYPE, CityRenameRequestPayload.STREAM_CODEC, CityRenameRequestPayload::handle);
+        registrar.playToServer(GuideBookRequestPayload.TYPE, GuideBookRequestPayload.STREAM_CODEC, GuideBookRequestPayload::handle);
     }
 }
