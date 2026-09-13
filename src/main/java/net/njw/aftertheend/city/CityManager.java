@@ -43,16 +43,16 @@ public final class CityManager {
     public static int getMaxCityCount(MinecraftServer server) { return getSavedData(server).getMaxCityCount(); }
     public static void setMaxCityCount(MinecraftServer server, int maxCityCount) { getSavedData(server).setMaxCityCount(maxCityCount); }
 
-    public static CitySavedData.CityArrivalPosition getCityArrivalPosition(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension) {
-        return getSavedData(server).getCityArrivalPosition(cityId, dimension);
+    public static CitySavedData.CityArrivalAltar getCityArrivalAltar(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension) {
+        return getSavedData(server).getCityArrivalAltar(cityId, dimension);
     }
-    public static void setCityArrivalPosition(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension, int blockX, int y, int blockZ) {
-        getSavedData(server).setCityArrivalPosition(cityId, dimension, blockX, y, blockZ);
+    public static void setCityArrivalAltar(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension, int blockX, int y, int blockZ) {
+        getSavedData(server).setCityArrivalAltar(cityId, dimension, blockX, y, blockZ);
     }
-    public static void clearCityArrivalPosition(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension) {
-        getSavedData(server).clearCityArrivalPosition(cityId, dimension);
+    public static void clearCityArrivalAltar(MinecraftServer server, UUID cityId, ResourceKey<Level> dimension) {
+        getSavedData(server).clearCityArrivalAltar(cityId, dimension);
     }
-    public static void clearCityArrivalPositions(MinecraftServer server, UUID cityId) { getSavedData(server).clearCityArrivalPositions(cityId); }
+    public static void clearCityArrivalAltars(MinecraftServer server, UUID cityId) { getSavedData(server).clearCityArrivalAltars(cityId); }
 
     public static City findCityContaining(MinecraftServer server, ResourceKey<Level> dimension, int blockX, int blockZ) {
         return getSavedData(server).findCityContaining(dimension, blockX, blockZ, false);
