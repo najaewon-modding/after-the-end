@@ -26,6 +26,14 @@ public final class ModContent {
             ShulkerCoreItem::new
     );
 
+    public static final DeferredItem<Item> REPLICATION_PILL = ITEMS.registerItem("replication_pill", Item::new);
+    public static final DeferredItem<Item> SORTING_PILL = ITEMS.registerItem("sorting_pill", Item::new);
+    public static final DeferredItem<Item> SMELTING_PILL = ITEMS.registerItem("smelting_pill", Item::new);
+    public static final DeferredItem<Item> SUPPLY_PILL = ITEMS.registerItem("supply_pill", Item::new);
+    public static final DeferredItem<Item> CONCOCTION_PILL = ITEMS.registerItem("concoction_pill", Item::new);
+    public static final DeferredItem<Item> LOGISTICS_PILL = ITEMS.registerItem("logistics_pill", Item::new);
+    public static final DeferredItem<Item> SWITCHING_PILL = ITEMS.registerItem("switching_pill", Item::new);
+
     public static final DeferredBlock<ResonanceCrystalBlock> RESONANCE_CRYSTAL = BLOCKS.registerBlock(
             "resonance_crystal",
             ResonanceCrystalBlock::new,
