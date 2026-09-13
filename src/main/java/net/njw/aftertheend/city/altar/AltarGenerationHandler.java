@@ -23,7 +23,7 @@ public final class AltarGenerationHandler {
         for (City city : CityManager.getAccessibleCities(server)) {
             if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedAccessibleAltars++;
         }
-        for (City city : CityManager.getLockedCities().stream().limit(SYNCHRONOUS_LOCKED_CITY_COUNT).toList()) {
+        for (City city : CityManager.getLockedCities(server).stream().limit(SYNCHRONOUS_LOCKED_CITY_COUNT).toList()) {
             if (AltarPlacementService.ensureGeneratedIfMissing(server, city)) generatedLockedAltars++;
         }
 
