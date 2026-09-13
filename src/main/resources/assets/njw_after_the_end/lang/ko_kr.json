@@ -71,6 +71,8 @@
   "message.njw_after_the_end.arrival_altar.failed_altar_unavailable": "제단을 더 이상 이용할 수 없어 도착 제단 지정에 실패했습니다.",
   "message.njw_after_the_end.arrival_altar.saved": "%s의 도착 제단으로 지정했습니다.",
 
+  "command.njw_after_the_end.pill.given": "주민 강화 알약 7종을 지급했습니다.",
+
   "command.njw_after_the_end.city.created_accessible": "접근 가능한 도시를 생성했습니다: %s",
   "command.njw_after_the_end.city.created_locked": "잠긴 도시를 생성했습니다: %s",
   "command.njw_after_the_end.city.failed_create": "도시를 생성하지 못했습니다. 자세한 내용은 서버 로그를 확인하세요.",
