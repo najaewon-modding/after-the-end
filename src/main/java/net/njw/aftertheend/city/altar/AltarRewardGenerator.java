@@ -43,7 +43,7 @@ final class AltarRewardGenerator {
             new RewardEntry(Items.EMERALD, 12, 24, 12, false)
     );
     private static final List<RewardEntry> RARE_REWARDS = List.of(
-            new RewardEntry(Items.WITHER_SKELETON_SKULL, 1, 1, 20, false),
+            new RewardEntry(Items.WITHER_SKELETON_SKULL, 1, 1, 50, false),
             new RewardEntry(Items.ANCIENT_DEBRIS, 1, 2, 40, false),
             new RewardEntry(Items.ENCHANTED_GOLDEN_APPLE, 1, 1, 10, false)
     );
@@ -58,7 +58,7 @@ final class AltarRewardGenerator {
         addRolls(level, random, rewards, NETHER_REWARDS, 2);
         addRolls(level, random, rewards, END_REWARDS, 2);
         addRolls(level, random, rewards, TREASURE_REWARDS, 2);
-        if (random.nextFloat() < 0.25F) rewards.add(roll(level, random, RARE_REWARDS));
+        if (random.nextFloat() < 0.15F) rewards.add(roll(level, random, RARE_REWARDS));
         placeInRandomSlots(chest, random, rewards);
         chest.setChanged();
     }
