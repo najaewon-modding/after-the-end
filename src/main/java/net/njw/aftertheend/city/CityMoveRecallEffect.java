@@ -1,7 +1,7 @@
 package net.njw.aftertheend.city;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
@@ -9,24 +9,49 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
+import net.njw.aftertheend.network.CityRecallSoundPayload;
 
-final class CityMoveRecallEffect {
+public final class CityMoveRecallEffect {
     private static final DustParticleOptions FRAME = new DustParticleOptions(0x2EC8FF, 0.76F);
     private static final DustParticleOptions STRAND_A = new DustParticleOptions(0x3A8DFF, 0.70F);
     private static final DustParticleOptions STRAND_B = new DustParticleOptions(0x55D8FF, 0.66F);
     private static final DustParticleOptions HIGHLIGHT = new DustParticleOptions(0xD0F6FF, 0.56F);
-    private static final Set<UUID> FINAL_BURST_PLAYED = new HashSet<>();
+    private static final Map<UUID, Long> SOUND_HEARTBEATS = new HashMap<>();
+    private static final Map<UUID, Boolean> FINAL_BURST_PLAYED = new HashMap<>();
+    private static long serverTick;
 
     private CityMoveRecallEffect() { }
 
     static void tick(ServerPlayer player, int ticks, double progress) {
         UUID playerId = player.getUUID();
-        if (ticks <= 1) FINAL_BURST_PLAYED.remove(playerId);
-        playSound(player, ticks, progress);
+        if (ticks <= 1) {
+            FINAL_BURST_PLAYED.remove(playerId);
+            if (!SOUND_HEARTBEATS.containsKey(playerId)) sendSoundState(player, true);
+        }
+        SOUND_HEARTBEATS.put(playerId, serverTick);
 
         int interval = progress < 0.52D ? 3 : 2;
         if (ticks % interval == 0) spawnVisuals(player, ticks, progress);
-        if (progress >= 0.985D && FINAL_BURST_PLAYED.add(playerId)) spawnFinalBurst(player);
+        if (progress >= 0.998D && FINAL_BURST_PLAYED.putIfAbsent(playerId, Boolean.TRUE) == null) {
+            stopSound(player);
+            spawnFinalBurst(player);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onServerTick(ServerTickEvent.Post event) {
+        serverTick++;
+        if (SOUND_HEARTBEATS.isEmpty()) return;
+        for (Map.Entry<UUID, Long> entry : Map.copyOf(SOUND_HEARTBEATS).entrySet()) {
+            if (serverTick - entry.getValue() < 2L) continue;
+            ServerPlayer player = event.getServer().getPlayerList().getPlayer(entry.getKey());
+            if (player != null) sendSoundState(player, false);
+            SOUND_HEARTBEATS.remove(entry.getKey());
+            FINAL_BURST_PLAYED.remove(entry.getKey());
+        }
     }
 
     private static void spawnVisuals(ServerPlayer player, int ticks, double progress) {
@@ -35,9 +60,9 @@ final class CityMoveRecallEffect {
         double y = player.getY() + 0.025D;
         double z = player.getZ();
 
-        double heightGrowth = smoothstep(0.05D, 0.75D, progress);
-        double densityGrowth = smoothstep(0.75D, 0.995D, progress);
-        double tighten = smoothstep(0.88D, 1.0D, progress);
+        double heightGrowth = smoothstep(0.05D, 0.875D, progress);
+        double densityGrowth = smoothstep(0.875D, 0.995D, progress);
+        double tighten = smoothstep(0.90D, 1.0D, progress);
         double pulse = 1.0D + 0.015D * Math.sin(ticks * 0.19D);
         double phase = ticks * (0.105D + progress * 0.205D);
 
@@ -45,7 +70,7 @@ final class CityMoveRecallEffect {
         double baseRadius = (0.92D - 0.06D * tighten) * pulse;
         double topRadius = (0.72D - 0.08D * tighten) / pulse;
         double turns = 1.35D + 1.55D * heightGrowth + 0.38D * densityGrowth;
-        int strands = progress < 0.38D ? 2 : progress < 0.80D ? 3 : progress < 0.92D ? 4 : 5;
+        int strands = progress < 0.38D ? 2 : progress < 0.875D ? 3 : progress < 0.95D ? 4 : 5;
         int points = 10 + (int) Math.round(heightGrowth * 8.0D + densityGrowth * 8.0D);
 
         spawnRing(level, x, y + 0.025D, z, baseRadius, 18, phase, FRAME);
@@ -56,20 +81,18 @@ final class CityMoveRecallEffect {
                     height, baseRadius, topRadius, turns, points);
         }
 
-        if (progress >= 0.66D) {
-            double crownGrowth = smoothstep(0.66D, 0.82D, progress);
+        if (progress >= 0.76D) {
+            double crownGrowth = smoothstep(0.76D, 0.90D, progress);
             int crownPoints = 8 + (int) Math.round(crownGrowth * 6.0D + densityGrowth * 4.0D);
             spawnRing(level, x, y + height, z, topRadius, crownPoints,
                     phase + turns * Math.PI * 2.0D, FRAME);
         }
 
-        if (progress >= 0.82D) {
+        if (progress >= 0.90D) {
             spawnSecondaryStrands(level, x, y, z, phase, ticks, progress, height,
                     baseRadius, topRadius, densityGrowth);
         }
-        if (progress >= 0.94D) {
-            spawnFinalCoreStrand(level, x, y, z, phase, ticks, progress, height);
-        }
+        if (progress >= 0.96D) spawnFinalCoreStrand(level, x, y, z, phase, ticks, progress, height);
     }
 
     private static void spawnStrand(ServerLevel level, double x, double y, double z, double phase,
@@ -99,7 +122,7 @@ final class CityMoveRecallEffect {
     private static void spawnSecondaryStrands(ServerLevel level, double x, double y, double z,
                                               double phase, int ticks, double progress, double height,
                                               double baseRadius, double topRadius, double densityGrowth) {
-        int strandCount = progress < 0.92D ? 1 : 2;
+        int strandCount = progress < 0.96D ? 1 : 2;
         int points = 8 + (int) Math.round(densityGrowth * 10.0D);
         double turns = 1.65D + 1.05D * densityGrowth;
         for (int strand = 0; strand < strandCount; strand++) {
@@ -127,7 +150,7 @@ final class CityMoveRecallEffect {
 
     private static void spawnFinalCoreStrand(ServerLevel level, double x, double y, double z,
                                              double phase, int ticks, double progress, double height) {
-        double intensity = smoothstep(0.94D, 1.0D, progress);
+        double intensity = smoothstep(0.96D, 1.0D, progress);
         int points = 10 + (int) Math.round(intensity * 8.0D);
         double turns = 1.9D + 1.2D * intensity;
         for (int step = 0; step < points; step++) {
@@ -187,33 +210,18 @@ final class CityMoveRecallEffect {
             }
         }
         level.sendParticles(ParticleTypes.END_ROD, x, y + 1.12D, z, 10, 0.22D, 0.70D, 0.22D, 0.042D);
-        level.playSound(null, player.blockPosition(), SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1.15F, 1.28F);
-        level.playSound(null, player.blockPosition(), SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 0.95F, 1.95F);
-        level.playSound(null, player.blockPosition(), SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS, 0.80F, 1.65F);
+        level.playSound(null, player.blockPosition(), SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1.0F, 1.0F);
     }
 
-    private static void playSound(ServerPlayer player, int ticks, double progress) {
-        ServerLevel level = player.level();
-        if (ticks == 1) {
-            level.playSound(null, player.blockPosition(), SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS, 0.82F, 0.66F);
-            level.playSound(null, player.blockPosition(), SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS, 0.62F, 0.68F);
-            return;
-        }
+    private static void stopSound(ServerPlayer player) {
+        if (SOUND_HEARTBEATS.remove(player.getUUID()) != null) sendSoundState(player, false);
+    }
 
-        if (ticks % 40 == 0 && progress < 0.96D) {
-            level.playSound(null, player.blockPosition(), SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS,
-                    (float) (0.42D + progress * 0.20D), (float) (0.70D + progress * 0.34D));
-        }
-
-        int pulseInterval = progress < 0.35D ? 16 : progress < 0.65D ? 12 : progress < 0.84D ? 8 : 5;
-        if (ticks % pulseInterval != 0 || progress >= 0.985D) return;
-
-        float pitch = (float) (0.66D + progress * 1.18D);
-        float chimeVolume = (float) (0.34D + progress * 0.42D);
-        float chargeVolume = (float) (0.40D + progress * 0.36D);
-        level.playSound(null, player.blockPosition(), SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, chimeVolume, pitch);
-        level.playSound(null, player.blockPosition(), SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS,
-                chargeVolume, (float) (0.72D + progress * 0.84D));
+    private static void sendSoundState(ServerPlayer player, boolean active) {
+        PacketDistributor.sendToPlayersTrackingEntityAndSelf(
+                player,
+                new CityRecallSoundPayload(player.getUUID(), active)
+        );
     }
 
     private static double smoothstep(double edge0, double edge1, double value) {
