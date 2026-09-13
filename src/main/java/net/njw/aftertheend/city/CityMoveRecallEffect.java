@@ -22,7 +22,7 @@ public final class CityMoveRecallEffect {
     private static final DustParticleOptions STRAND_B = new DustParticleOptions(0x55D8FF, 0.66F);
     private static final DustParticleOptions HIGHLIGHT = new DustParticleOptions(0xD0F6FF, 0.56F);
     private static final double PORTAL_TRIGGER_START_PROGRESS = 0.50D;
-    private static final double FINAL_RISE_START_PROGRESS = 0.875D;
+    private static final double FINAL_RISE_START_PROGRESS = 0.85D;
     private static final Map<UUID, Long> SOUND_HEARTBEATS = new HashMap<>();
     private static final Set<UUID> PORTAL_TRIGGER_PLAYED = new HashSet<>();
     private static final Set<UUID> FINAL_BURST_PLAYED = new HashSet<>();
