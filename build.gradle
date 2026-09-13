@@ -20,6 +20,18 @@ sourceSets.main.resources {
     exclude("src/generated/**/.cache")
 }
 
+var generatePillTexture = tasks.register("generatePillTexture") {
+    var outputDir = layout.buildDirectory.dir("generated/pillTexture")
+    outputs.dir(outputDir)
+    doLast {
+        var textureFile = outputDir.get().file("assets/njw_after_the_end/textures/item/villager_pill.png").asFile
+        textureFile.parentFile.mkdirs()
+        textureFile.bytes = java.util.Base64.decoder.decode("iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABCElEQVR42q2Tu42FMBBFr5+2AIvAEiJzRuAqaICYDiiBCijBHRDTABFFOHNmWZrAogNeNCy/95F2bwJ4OHeuf8AfJV4VhmFY999N04ivDBhUSkEpBQAgIhDRrZE4w3vwLCLCNE3o+37jHnewMQbGmFuTqqrQdd16MfhWRIRlWY5T+BSdQX6GEOC9h7VWPO5+Oo+dx4ui2N5/AGCeZ2itD4V3KUIIiDH+GgCA9x7ee0gpkWXZxSyEgJQSnHMAgDzPj9vYtu0qpTwsEIu7AUBZlnDOYRxHcUjA4gR7aa0BACmlS4NtEa21gosppUsKhmOMW/fbo1zX9cpR9914Gnv47WViI9YZ/Dc9AeQSimdBeCeEAAAAAElFTkSuQmCC")
+    }
+}
+sourceSets.main.resources.srcDir generatePillTexture
+neoForge.ideSyncTask generatePillTexture
+
 repositories {
     mavenCentral()
     ivy {
