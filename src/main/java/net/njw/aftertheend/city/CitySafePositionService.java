@@ -13,18 +13,12 @@ public final class CitySafePositionService {
     private static final int SEARCH_RADIUS_BLOCKS = 64;
     private static final int SEARCH_STEP_BLOCKS = 4;
 
-    private CitySafePositionService() {
-    }
+    private CitySafePositionService() { }
 
     public static SafePosition findStartingCityFallback(MinecraftServer server, ServerLevel level) {
         City startingCity = CityManager.getStartingCity(server);
         CityRegion region = startingCity.getRegion(level.dimension()).orElse(null);
         if (region == null) return null;
-
-        CitySavedData.CityArrivalPosition stored = CityManager.getCityArrivalPosition(server, startingCity.id(), level.dimension());
-        if (stored != null && isSafeStandingPosition(level, stored.blockX(), stored.y(), stored.blockZ())) {
-            return new SafePosition(stored.blockX() + 0.5D, stored.y(), stored.blockZ() + 0.5D);
-        }
 
         int centerX = region.centerChunkX() * 16;
         int centerZ = region.centerChunkZ() * 16;
@@ -71,7 +65,8 @@ public final class CitySafePositionService {
         BlockPos head = new BlockPos(x, y + 1, z);
         BlockState floorState = level.getBlockState(floor);
         if (!floorState.getFluidState().isEmpty()) return false;
-        if (floorState.is(Blocks.BEDROCK) || floorState.is(Blocks.MAGMA_BLOCK) || floorState.is(Blocks.CAMPFIRE) || floorState.is(Blocks.SOUL_CAMPFIRE) || floorState.is(Blocks.CACTUS)) return false;
+        if (floorState.is(Blocks.BEDROCK) || floorState.is(Blocks.MAGMA_BLOCK) || floorState.is(Blocks.CAMPFIRE)
+                || floorState.is(Blocks.SOUL_CAMPFIRE) || floorState.is(Blocks.CACTUS)) return false;
         if (!floorState.isFaceSturdy(level, floor, Direction.UP)) return false;
         return isSafeSpace(level, feet) && isSafeSpace(level, head);
     }
@@ -79,8 +74,9 @@ public final class CitySafePositionService {
     private static boolean isSafeSpace(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
         if (!state.getFluidState().isEmpty() || !state.getCollisionShape(level, pos).isEmpty()) return false;
-        return !state.is(Blocks.FIRE) && !state.is(Blocks.SOUL_FIRE) && !state.is(Blocks.POWDER_SNOW) && !state.is(Blocks.SWEET_BERRY_BUSH)
-                && !state.is(Blocks.WITHER_ROSE) && !state.is(Blocks.NETHER_PORTAL) && !state.is(Blocks.END_PORTAL) && !state.is(Blocks.END_GATEWAY);
+        return !state.is(Blocks.FIRE) && !state.is(Blocks.SOUL_FIRE) && !state.is(Blocks.POWDER_SNOW)
+                && !state.is(Blocks.SWEET_BERRY_BUSH) && !state.is(Blocks.WITHER_ROSE)
+                && !state.is(Blocks.NETHER_PORTAL) && !state.is(Blocks.END_PORTAL) && !state.is(Blocks.END_GATEWAY);
     }
 
     public record SafePosition(double x, double y, double z) { }
