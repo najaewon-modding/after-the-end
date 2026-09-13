@@ -2,6 +2,7 @@ package net.njw.aftertheend.city;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -41,7 +42,7 @@ import java.util.Set;
 import java.util.UUID;
 
 public final class CityTeleportService {
-    private static final long CAST_DURATION_NANOS = 3_000_000_000L;
+    private static final long CAST_DURATION_NANOS = 8_000_000_000L;
     private static final long ARRIVAL_CAST_DURATION_NANOS = 3_000_000_000L;
     private static final long COOLDOWN_DURATION_NANOS = 3_000_000_000L;
     private static final long GLOBAL_SEARCH_BUDGET_NANOS_PER_TICK = 5_000_000L;
@@ -56,6 +57,13 @@ public final class CityTeleportService {
     private static final int MONSTER_CHECK_INTERVAL_TICKS = 5;
     private static final double MONSTER_HORIZONTAL_RANGE = 8.0D;
     private static final double MONSTER_VERTICAL_RANGE = 5.0D;
+    private static final int CITY_MOVE_EFFECT_INTERVAL_TICKS = 4;
+    private static final int CITY_MOVE_OUTER_RING_POINTS = 18;
+    private static final int CITY_MOVE_INNER_RING_POINTS = 10;
+    private static final int CITY_MOVE_SPIRAL_POINTS = 5;
+    private static final DustParticleOptions CITY_MOVE_OUTER_PARTICLE = new DustParticleOptions(0x38BDF8, 0.95F);
+    private static final DustParticleOptions CITY_MOVE_INNER_PARTICLE = new DustParticleOptions(0x9BE7FF, 0.72F);
+    private static final DustParticleOptions CITY_MOVE_SPIRAL_PARTICLE = new DustParticleOptions(0x67D8FF, 0.65F);
     private static final List<SearchOffset> SEARCH_OFFSETS = createSearchOffsets();
     private static final List<SearchOffset> LOCAL_OFFSETS = createLocalOffsets();
     private static final List<SearchOffset> SMALL_ALTAR_OFFSETS = createAltarSearchOffsets(false);
@@ -196,6 +204,7 @@ public final class CityTeleportService {
                 cancelCast(player, "message.njw_after_the_end.city_move.interrupted_monsters");
                 continue;
             }
+            spawnCityMoveEffect(player, session);
 
             long remainingBudget = searchDeadline - System.nanoTime();
             if (remainingBudget > 0L && !session.search.isComplete()) session.search.advance(Math.min(fairShare, remainingBudget));
@@ -395,6 +404,45 @@ public final class CityTeleportService {
     private static void closeBossBar(ServerBossEvent bossBar) {
         bossBar.setVisible(false);
         bossBar.removeAllPlayers();
+    }
+
+    private static void spawnCityMoveEffect(ServerPlayer player, CastSession session) {
+        if (session.ticks % CITY_MOVE_EFFECT_INTERVAL_TICKS != 0) return;
+        ServerLevel level = player.level();
+        double progress = Math.clamp((System.nanoTime() - session.startedAtNanos) / (double) CAST_DURATION_NANOS, 0.0D, 1.0D);
+        double phase = session.ticks * 0.11D;
+        double pulse = 1.0D + 0.055D * Math.sin(session.ticks * 0.18D);
+        double x = player.getX();
+        double y = player.getY() + 0.055D;
+        double z = player.getZ();
+
+        spawnCityMoveRing(level, x, y, z, 1.38D * pulse, CITY_MOVE_OUTER_RING_POINTS, phase, CITY_MOVE_OUTER_PARTICLE, session.ticks);
+        spawnCityMoveRing(level, x, y + 0.035D, z, 0.78D * pulse, CITY_MOVE_INNER_RING_POINTS, -phase * 1.35D, CITY_MOVE_INNER_PARTICLE, session.ticks + 7);
+
+        double spiralPhase = phase * 2.0D;
+        for (int i = 0; i < CITY_MOVE_SPIRAL_POINTS; i++) {
+            double angle = spiralPhase + (Math.PI * 2.0D * i / CITY_MOVE_SPIRAL_POINTS);
+            double radius = 0.42D + 0.11D * Math.sin(session.ticks * 0.13D + i);
+            double height = 0.18D + i * 0.31D + 0.18D * progress;
+            level.sendParticles(
+                    CITY_MOVE_SPIRAL_PARTICLE,
+                    x + Math.cos(angle) * radius, y + height, z + Math.sin(angle) * radius,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D
+            );
+        }
+    }
+
+    private static void spawnCityMoveRing(ServerLevel level, double centerX, double y, double centerZ, double radius,
+                                          int points, double phase, DustParticleOptions particle, int waveTick) {
+        for (int i = 0; i < points; i++) {
+            double angle = Math.PI * 2.0D * i / points + phase;
+            double wave = 0.035D * Math.sin(angle * 3.0D + waveTick * 0.16D);
+            level.sendParticles(
+                    particle,
+                    centerX + Math.cos(angle) * radius, y + wave, centerZ + Math.sin(angle) * radius,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D
+            );
+        }
     }
 
     private static boolean hasRestPreventingMonsterNearby(ServerPlayer player) {
