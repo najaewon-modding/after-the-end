@@ -11,9 +11,10 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 
 final class CityMoveRecallEffect {
-    private static final DustParticleOptions BASE = new DustParticleOptions(0x28C7FF, 0.82F);
-    private static final DustParticleOptions SPIRAL = new DustParticleOptions(0x429BFF, 0.72F);
-    private static final DustParticleOptions CORE = new DustParticleOptions(0xBDEFFF, 0.60F);
+    private static final DustParticleOptions FRAME = new DustParticleOptions(0x2EC8FF, 0.78F);
+    private static final DustParticleOptions STRAND_A = new DustParticleOptions(0x3A8DFF, 0.72F);
+    private static final DustParticleOptions STRAND_B = new DustParticleOptions(0x55D8FF, 0.68F);
+    private static final DustParticleOptions HIGHLIGHT = new DustParticleOptions(0xD0F6FF, 0.58F);
     private static final Set<UUID> FINAL_BURST_PLAYED = new HashSet<>();
 
     private CityMoveRecallEffect() { }
@@ -23,7 +24,7 @@ final class CityMoveRecallEffect {
         if (ticks <= 1) FINAL_BURST_PLAYED.remove(playerId);
         playSound(player, ticks, progress);
 
-        int interval = progress < 0.28D ? 3 : 2;
+        int interval = progress < 0.52D ? 3 : 2;
         if (ticks % interval == 0) spawnVisuals(player, ticks, progress);
         if (progress >= 0.985D && FINAL_BURST_PLAYED.add(playerId)) spawnFinalBurst(player);
     }
@@ -33,96 +34,91 @@ final class CityMoveRecallEffect {
         double x = player.getX();
         double y = player.getY() + 0.025D;
         double z = player.getZ();
-        double phase = ticks * (0.075D + progress * 0.22D);
-        double rise = smoothstep(0.04D, 0.90D, progress);
-        double tighten = smoothstep(0.70D, 1.0D, progress);
-        double pulse = 1.0D + 0.035D * Math.sin(ticks * 0.20D);
-        double height = 0.24D + 2.42D * rise;
-        double baseRadius = (1.28D - 0.18D * tighten) * pulse;
-        double topRadius = 0.46D - 0.12D * tighten;
-        int arms = progress < 0.44D ? 2 : progress < 0.76D ? 3 : 4;
-        int levels = 7 + (int) Math.round(rise * 12.0D);
-        double turns = 1.10D + 2.55D * rise;
 
-        for (int arm = 0; arm < arms; arm++) {
-            double armOffset = Math.PI * 2.0D * arm / arms;
-            spawnGroundIntake(level, x, y, z, baseRadius, phase, armOffset, ticks, progress);
-            for (int step = 0; step < levels; step++) {
-                double vertical = levels <= 1 ? 0.0D : step / (double) (levels - 1);
-                double curve = vertical * vertical * (3.0D - 2.0D * vertical);
-                double radius = baseRadius + (topRadius - baseRadius) * curve;
-                radius += 0.025D * Math.sin(ticks * 0.17D + step * 0.7D + arm);
-                double angle = phase * (1.35D + progress * 1.45D) + armOffset
-                        + vertical * Math.PI * 2.0D * turns;
-                DustParticleOptions particle = vertical < 0.22D ? BASE : vertical > 0.78D ? CORE : SPIRAL;
-                level.sendParticles(
-                        particle,
-                        x + Math.cos(angle) * radius,
-                        y + 0.035D + height * vertical,
-                        z + Math.sin(angle) * radius,
-                        1, 0.0D, 0.0D, 0.0D, 0.0D
-                );
-            }
+        double phase = ticks * (0.105D + progress * 0.185D);
+        double bodyGrowth = smoothstep(0.06D, 0.875D, progress);
+        double finalRise = smoothstep(0.875D, 0.995D, progress);
+        double tighten = smoothstep(0.84D, 1.0D, progress);
+        double pulse = 1.0D + 0.018D * Math.sin(ticks * 0.19D);
+
+        double height = 0.18D + 1.25D * bodyGrowth + 0.95D * finalRise;
+        double baseRadius = (0.98D - 0.09D * tighten) * pulse;
+        double topRadius = (0.78D - 0.14D * tighten) / pulse;
+        double turns = 1.35D + 1.45D * bodyGrowth + 0.45D * finalRise;
+        int strands = progress < 0.40D ? 2 : progress < 0.875D ? 3 : 4;
+        int points = 11 + (int) Math.round(bodyGrowth * 9.0D + finalRise * 5.0D);
+
+        spawnRing(level, x, y + 0.025D, z, baseRadius, 20, phase, FRAME);
+
+        for (int strand = 0; strand < strands; strand++) {
+            double strandOffset = Math.PI * 2.0D * strand / strands;
+            spawnStrand(level, x, y, z, phase, strandOffset, ticks, strand,
+                    height, baseRadius, topRadius, turns, points);
         }
 
-        if (progress >= 0.64D) spawnInnerVortex(level, x, y, z, phase, ticks, progress, height, tighten);
-        if (progress >= 0.88D) spawnFinalSuction(level, x, y, z, phase, ticks, progress, height);
+        if (progress >= 0.72D) {
+            double crownAlpha = smoothstep(0.72D, 0.90D, progress);
+            int crownPoints = 10 + (int) Math.round(crownAlpha * 8.0D);
+            spawnRing(level, x, y + height, z, topRadius, crownPoints, phase + turns * Math.PI * 2.0D, FRAME);
+        }
+
+        if (progress >= 0.90D) {
+            spawnFinalCoreStrand(level, x, y, z, phase, ticks, progress, height);
+        }
     }
 
-    private static void spawnGroundIntake(ServerLevel level, double x, double y, double z, double baseRadius,
-                                          double phase, double armOffset, int ticks, double progress) {
-        int points = progress < 0.55D ? 4 : 6;
+    private static void spawnStrand(ServerLevel level, double x, double y, double z, double phase,
+                                    double strandOffset, int ticks, int strand, double height,
+                                    double baseRadius, double topRadius, double turns, int points) {
+        int runner = Math.floorMod(ticks / 2 + strand * 4, points);
         for (int step = 0; step < points; step++) {
-            double ratio = points <= 1 ? 1.0D : step / (double) (points - 1);
-            double radius = baseRadius + 0.48D * (1.0D - ratio);
-            double angle = phase * (1.12D + progress) + armOffset - (1.0D - ratio) * 1.20D;
-            double lift = 0.018D + ratio * 0.055D + 0.012D * Math.sin(ticks * 0.15D + step);
+            double vertical = points <= 1 ? 0.0D : step / (double) (points - 1);
+            double radiusCurve = vertical * vertical * (3.0D - 2.0D * vertical);
+            double radius = baseRadius + (topRadius - baseRadius) * radiusCurve;
+            double angle = phase + strandOffset + vertical * Math.PI * 2.0D * turns;
+            int runnerDistance = Math.abs(step - runner);
+            runnerDistance = Math.min(runnerDistance, points - runnerDistance);
+            DustParticleOptions particle = runnerDistance <= 1
+                    ? HIGHLIGHT
+                    : (strand & 1) == 0 ? STRAND_A : STRAND_B;
             level.sendParticles(
-                    BASE,
+                    particle,
                     x + Math.cos(angle) * radius,
-                    y + lift,
+                    y + 0.035D + height * vertical,
                     z + Math.sin(angle) * radius,
                     1, 0.0D, 0.0D, 0.0D, 0.0D
             );
         }
     }
 
-    private static void spawnInnerVortex(ServerLevel level, double x, double y, double z, double phase,
-                                         int ticks, double progress, double height, double tighten) {
-        double intensity = smoothstep(0.64D, 1.0D, progress);
-        int arms = progress < 0.84D ? 1 : 2;
-        int levels = 5 + (int) Math.round(intensity * 9.0D);
-        for (int arm = 0; arm < arms; arm++) {
-            double armOffset = Math.PI * 2.0D * arm / arms + Math.PI * 0.42D;
-            for (int step = 0; step < levels; step++) {
-                double vertical = levels <= 1 ? 0.0D : step / (double) (levels - 1);
-                double radius = (0.72D - 0.18D * vertical - 0.13D * tighten)
-                        + 0.025D * Math.sin(ticks * 0.19D + step);
-                double angle = -phase * (1.9D + progress * 1.2D) + armOffset
-                        + vertical * Math.PI * 2.0D * (2.0D + 1.4D * intensity);
-                level.sendParticles(
-                        CORE,
-                        x + Math.cos(angle) * radius,
-                        y + 0.08D + height * vertical * 0.92D,
-                        z + Math.sin(angle) * radius,
-                        1, 0.0D, 0.0D, 0.0D, 0.0D
-                );
-            }
+    private static void spawnFinalCoreStrand(ServerLevel level, double x, double y, double z,
+                                             double phase, int ticks, double progress, double height) {
+        double intensity = smoothstep(0.90D, 1.0D, progress);
+        int points = 10 + (int) Math.round(intensity * 8.0D);
+        double turns = 1.8D + 1.3D * intensity;
+        for (int step = 0; step < points; step++) {
+            double vertical = points <= 1 ? 0.0D : step / (double) (points - 1);
+            double angle = -phase * 1.35D + vertical * Math.PI * 2.0D * turns;
+            double radius = 0.56D - 0.13D * vertical - 0.06D * intensity;
+            DustParticleOptions particle = (step + ticks / 2) % 6 <= 1 ? HIGHLIGHT : STRAND_B;
+            level.sendParticles(
+                    particle,
+                    x + Math.cos(angle) * radius,
+                    y + 0.07D + height * vertical * 0.96D,
+                    z + Math.sin(angle) * radius,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D
+            );
         }
     }
 
-    private static void spawnFinalSuction(ServerLevel level, double x, double y, double z, double phase,
-                                          int ticks, double progress, double height) {
-        double intensity = smoothstep(0.88D, 1.0D, progress);
-        int streaks = 5 + (int) Math.round(intensity * 5.0D);
-        for (int i = 0; i < streaks; i++) {
-            double vertical = i / (double) Math.max(1, streaks - 1);
-            double angle = phase * 3.2D + i * 2.399963229728653D;
-            double radius = 0.86D - 0.48D * vertical - 0.14D * intensity;
+    private static void spawnRing(ServerLevel level, double x, double y, double z, double radius,
+                                  int points, double phase, DustParticleOptions particle) {
+        for (int i = 0; i < points; i++) {
+            double angle = phase + Math.PI * 2.0D * i / points;
             level.sendParticles(
-                    CORE,
+                    particle,
                     x + Math.cos(angle) * radius,
-                    y + 0.12D + height * vertical,
+                    y,
                     z + Math.sin(angle) * radius,
                     1, 0.0D, 0.0D, 0.0D, 0.0D
             );
@@ -132,25 +128,31 @@ final class CityMoveRecallEffect {
     private static void spawnFinalBurst(ServerPlayer player) {
         ServerLevel level = player.level();
         double x = player.getX();
-        double y = player.getY() + 0.08D;
+        double y = player.getY() + 0.05D;
         double z = player.getZ();
-        for (int arm = 0; arm < 4; arm++) {
-            double armOffset = Math.PI * 2.0D * arm / 4.0D;
-            for (int step = 0; step < 9; step++) {
-                double vertical = step / 8.0D;
-                double angle = armOffset + vertical * Math.PI * 4.5D;
-                double radius = 0.92D - 0.58D * vertical;
+        double phase = player.tickCount * 0.31D;
+
+        double[] heights = {0.04D, 0.78D, 1.52D, 2.24D};
+        double[] radii = {0.90D, 0.73D, 0.58D, 0.46D};
+        for (int i = 0; i < heights.length; i++) {
+            spawnRing(level, x, y + heights[i], z, radii[i], 16, phase + i * 0.55D, HIGHLIGHT);
+        }
+        for (int strand = 0; strand < 4; strand++) {
+            double offset = Math.PI * 2.0D * strand / 4.0D;
+            for (int step = 0; step < 12; step++) {
+                double vertical = step / 11.0D;
+                double angle = phase + offset + vertical * Math.PI * 5.2D;
+                double radius = 0.88D - 0.52D * vertical;
                 level.sendParticles(
-                        CORE,
+                        HIGHLIGHT,
                         x + Math.cos(angle) * radius,
-                        y + vertical * 2.25D,
+                        y + 0.03D + vertical * 2.30D,
                         z + Math.sin(angle) * radius,
                         1, 0.0D, 0.0D, 0.0D, 0.0D
                 );
             }
         }
-        level.sendParticles(ParticleTypes.END_ROD, x, y + 1.05D, z, 42, 0.40D, 1.00D, 0.40D, 0.09D);
-        level.sendParticles(CORE, x, y + 1.0D, z, 34, 0.34D, 0.90D, 0.34D, 0.025D);
+        level.sendParticles(ParticleTypes.END_ROD, x, y + 1.12D, z, 12, 0.24D, 0.72D, 0.24D, 0.045D);
         level.playSound(null, player.blockPosition(), SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1.15F, 1.28F);
         level.playSound(null, player.blockPosition(), SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 0.95F, 1.95F);
         level.playSound(null, player.blockPosition(), SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS, 0.80F, 1.65F);
