@@ -6,16 +6,24 @@ import java.util.Locale;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FontDescription;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.Filterable;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.WrittenBookContent;
+import net.njw.aftertheend.AfterTheEnd;
 
 public final class GuideBookService {
     private static final String AUTHOR = "After the End";
     private static final String ENGLISH_TITLE = "After the End Guide";
     private static final String KOREAN_TITLE = "After the End 안내서";
+    private static final Style KOREAN_BREAK_STYLE = Style.EMPTY.withFont(new FontDescription.Resource(
+            Identifier.fromNamespaceAndPath(AfterTheEnd.MODID, "korean_break")
+    ));
     private static final String[] ENGLISH_PAGES = buildEnglishPages();
     private static final String[] KOREAN_PAGES = buildKoreanPages();
 
@@ -51,8 +59,10 @@ public final class GuideBookService {
         String[] sourcePages = korean ? KOREAN_PAGES : ENGLISH_PAGES;
         List<Filterable<Component>> pages = new ArrayList<>(sourcePages.length);
         for (String sourcePage : sourcePages) {
-            String renderedPage = korean ? sourcePage.replace(' ', '\u00A0') : sourcePage;
-            pages.add(Filterable.passThrough(Component.literal(renderedPage).withStyle(ChatFormatting.BLACK)));
+            Component page = korean
+                    ? koreanPageComponent(sourcePage)
+                    : Component.literal(sourcePage).withStyle(ChatFormatting.BLACK);
+            pages.add(Filterable.passThrough(page));
         }
 
         ItemStack book = new ItemStack(Items.WRITTEN_BOOK);
@@ -61,6 +71,27 @@ public final class GuideBookService {
         ));
         book.set(DataComponents.CUSTOM_NAME, Component.literal(title).withStyle(ChatFormatting.GOLD));
         return book;
+    }
+
+    private static Component koreanPageComponent(String text) {
+        MutableComponent result = Component.empty();
+        int offset = 0;
+        while (offset < text.length()) {
+            int codePoint = text.codePointAt(offset);
+            int length = Character.charCount(codePoint);
+            result.append(Component.literal(text.substring(offset, offset + length)).withStyle(ChatFormatting.BLACK));
+            offset += length;
+            if (offset >= text.length() || !isHangul(codePoint)) continue;
+            int nextCodePoint = text.codePointAt(offset);
+            if (isHangul(nextCodePoint)) result.append(Component.literal(" ").withStyle(KOREAN_BREAK_STYLE));
+        }
+        return result;
+    }
+
+    private static boolean isHangul(int codePoint) {
+        return codePoint >= 0xAC00 && codePoint <= 0xD7A3
+                || codePoint >= 0x1100 && codePoint <= 0x11FF
+                || codePoint >= 0x3130 && codePoint <= 0x318F;
     }
 
     private static String[] buildKoreanPages() {
