@@ -6,6 +6,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.network.event.RegisterClientPayloadHandlersEvent;
 import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.network.AltarActivationPayload;
+import net.njw.aftertheend.network.CityRecallSoundPayload;
 import net.njw.aftertheend.network.CitySyncPayload;
 
 @EventBusSubscriber(
@@ -24,6 +25,10 @@ public final class CityClientNetworkHandler {
         event.register(
                 AltarActivationPayload.TYPE,
                 (payload, context) -> AltarActivationClientEffects.handle(payload)
+        );
+        event.register(
+                CityRecallSoundPayload.TYPE,
+                (payload, context) -> CityRecallClientSound.handle(payload)
         );
     }
 }
