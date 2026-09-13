@@ -71,6 +71,8 @@
   "message.njw_after_the_end.arrival_altar.failed_altar_unavailable": "Arrival Altar setup failed because the Altar is no longer available.",
   "message.njw_after_the_end.arrival_altar.saved": "Set this Altar as the arrival point for %s.",
 
+  "command.njw_after_the_end.pill.given": "Gave all seven villager upgrade pills.",
+
   "command.njw_after_the_end.city.created_accessible": "Created accessible city: %s",
   "command.njw_after_the_end.city.created_locked": "Created locked city: %s",
   "command.njw_after_the_end.city.failed_create": "Failed to create the city. Check the server log for details.",
