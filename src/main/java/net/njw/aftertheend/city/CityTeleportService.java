@@ -24,6 +24,10 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.njw.aftertheend.AfterTheEnd;
+import net.njw.aftertheend.city.altar.AltarManager;
+import net.njw.aftertheend.city.altar.AltarPlacement;
+import net.njw.aftertheend.city.altar.AltarTravelAccess;
+import net.njw.aftertheend.network.CityArrivalAltarRequestPayload;
 import net.njw.aftertheend.network.CityTeleportRequestPayload;
 
 import java.util.ArrayList;
@@ -38,6 +42,7 @@ import java.util.UUID;
 
 public final class CityTeleportService {
     private static final long CAST_DURATION_NANOS = 3_000_000_000L;
+    private static final long ARRIVAL_CAST_DURATION_NANOS = 5_000_000_000L;
     private static final long COOLDOWN_DURATION_NANOS = 3_000_000_000L;
     private static final long GLOBAL_SEARCH_BUDGET_NANOS_PER_TICK = 5_000_000L;
     private static final double MOVEMENT_CANCEL_DISTANCE_SQUARED = 0.01D;
@@ -46,25 +51,38 @@ public final class CityTeleportService {
     private static final int RADIAL_STEP = 32;
     private static final int RADIAL_DIRECTION_COUNT = 16;
     private static final int LOCAL_SEARCH_RADIUS = 2;
+    private static final int ALTAR_SEARCH_MARGIN = 3;
     private static final int MONSTER_CHECK_INTERVAL_TICKS = 5;
     private static final double MONSTER_HORIZONTAL_RANGE = 8.0D;
     private static final double MONSTER_VERTICAL_RANGE = 5.0D;
     private static final List<SearchOffset> SEARCH_OFFSETS = createSearchOffsets();
     private static final List<SearchOffset> LOCAL_OFFSETS = createLocalOffsets();
+    private static final List<SearchOffset> SMALL_ALTAR_OFFSETS = createAltarSearchOffsets(false);
+    private static final List<SearchOffset> LARGE_ALTAR_OFFSETS = createAltarSearchOffsets(true);
     private static final Map<UUID, CastSession> ACTIVE_CASTS = new HashMap<>();
+    private static final Map<UUID, ArrivalCastSession> ACTIVE_ARRIVAL_CASTS = new HashMap<>();
     private static final Map<UUID, Long> COOLDOWN_DEADLINES = new HashMap<>();
 
-    private CityTeleportService() {
-    }
+    private CityTeleportService() { }
 
     public static void handleRequest(CityTeleportRequestPayload payload, IPayloadContext context) {
         if (context.player() instanceof ServerPlayer player) startCast(player, payload.cityId());
     }
 
+    public static void handleArrivalAltarRequest(CityArrivalAltarRequestPayload payload, IPayloadContext context) {
+        if (context.player() instanceof ServerPlayer player) startArrivalAltarCast(player);
+    }
+
     private static void startCast(ServerPlayer player, UUID cityId) {
         UUID playerId = player.getUUID();
-        if (ACTIVE_CASTS.containsKey(playerId)) {
+        if (ACTIVE_CASTS.containsKey(playerId) || ACTIVE_ARRIVAL_CASTS.containsKey(playerId)) {
             player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.already_casting"));
+            return;
+        }
+
+        ServerLevel level = player.level();
+        if (!Level.OVERWORLD.equals(level.dimension())) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.overworld_only"));
             return;
         }
 
@@ -79,7 +97,6 @@ public final class CityTeleportService {
             COOLDOWN_DEADLINES.remove(playerId);
         }
 
-        ServerLevel level = player.level();
         MinecraftServer server = level.getServer();
         City city = CityManager.getCity(server, cityId);
         if (city == null) {
@@ -90,7 +107,7 @@ public final class CityTeleportService {
             player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.city_locked"));
             return;
         }
-        CityRegion region = city.getRegion(level.dimension()).orElse(null);
+        CityRegion region = city.getRegion(Level.OVERWORLD).orElse(null);
         if (region == null) {
             player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.dimension_unavailable"));
             return;
@@ -100,18 +117,68 @@ public final class CityTeleportService {
             return;
         }
 
-        CitySavedData.CityArrivalPosition stored = CityManager.getCityArrivalPosition(server, cityId, level.dimension());
-        SafeDestination cached = stored == null ? null : new SafeDestination(stored.blockX(), stored.y(), stored.blockZ());
-        DestinationSearchTask search = new DestinationSearchTask(level, region, cityId, cached);
-        ServerBossEvent bossBar = createCastBossBar(level, player, city);
-        ACTIVE_CASTS.put(playerId, new CastSession(cityId, level.dimension(), player.position(), now, now + CAST_DURATION_NANOS, search, bossBar));
+        AltarPlacement arrivalAltar = resolveArrivalAltar(server, city);
+        DestinationSearchTask search = new DestinationSearchTask(level, region, arrivalAltar);
+        ServerBossEvent bossBar = createBossBar(
+                level, player,
+                Component.translatable("message.njw_after_the_end.city_move.boss_bar", Component.literal(city.name()))
+        );
+        ACTIVE_CASTS.put(playerId, new CastSession(cityId, level.dimension(), player.position(), now,
+                now + CAST_DURATION_NANOS, search, bossBar));
         player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.preparing", Component.literal(city.name())));
+    }
+
+    private static void startArrivalAltarCast(ServerPlayer player) {
+        UUID playerId = player.getUUID();
+        if (ACTIVE_CASTS.containsKey(playerId) || ACTIVE_ARRIVAL_CASTS.containsKey(playerId)) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.arrival_altar.already_casting"));
+            return;
+        }
+        ServerLevel level = player.level();
+        if (!Level.OVERWORLD.equals(level.dimension())) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.arrival_altar.overworld_only"));
+            return;
+        }
+
+        MinecraftServer server = level.getServer();
+        City city = CityManager.findAccessibleCityContaining(server, Level.OVERWORLD, player.getBlockX(), player.getBlockZ());
+        if (city == null) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.arrival_altar.not_in_city"));
+            return;
+        }
+        AltarPlacement altar = findActivatedAltarContaining(server, city, player);
+        if (altar == null) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.arrival_altar.requires_activated_altar"));
+            return;
+        }
+        if (hasRestPreventingMonsterNearby(player)) {
+            player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.arrival_altar.monsters_nearby"));
+            return;
+        }
+
+        long now = System.nanoTime();
+        boolean originalShiftDown = player.isShiftKeyDown();
+        player.setShiftKeyDown(true);
+        ServerBossEvent bossBar = createBossBar(
+                level, player, Component.translatable("message.njw_after_the_end.arrival_altar.boss_bar")
+        );
+        ACTIVE_ARRIVAL_CASTS.put(playerId, new ArrivalCastSession(
+                city.id(), level.dimension(), altar.blockX(), altar.y(), altar.blockZ(),
+                player.position(), now, now + ARRIVAL_CAST_DURATION_NANOS, bossBar, originalShiftDown
+        ));
+        player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.arrival_altar.preparing"));
     }
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
-        if (ACTIVE_CASTS.isEmpty()) return;
+        if (ACTIVE_CASTS.isEmpty() && ACTIVE_ARRIVAL_CASTS.isEmpty()) return;
         MinecraftServer server = event.getServer();
+        tickCityMoveCasts(server);
+        tickArrivalAltarCasts(server);
+    }
+
+    private static void tickCityMoveCasts(MinecraftServer server) {
+        if (ACTIVE_CASTS.isEmpty()) return;
         List<UUID> playerIds = List.copyOf(ACTIVE_CASTS.keySet());
         long searchDeadline = System.nanoTime() + GLOBAL_SEARCH_BUDGET_NANOS_PER_TICK;
         long fairShare = Math.max(100_000L, GLOBAL_SEARCH_BUDGET_NANOS_PER_TICK / Math.max(1, playerIds.size()));
@@ -135,8 +202,7 @@ public final class CityTeleportService {
             if (remainingBudget > 0L && !session.search.isComplete()) session.search.advance(Math.min(fairShare, remainingBudget));
 
             long now = System.nanoTime();
-            float progress = (float) Math.max(0.0D, Math.min(1.0D, (double) (now - session.startedAtNanos) / CAST_DURATION_NANOS));
-            session.bossBar.setProgress(progress);
+            session.bossBar.setProgress(progress(now, session.startedAtNanos, CAST_DURATION_NANOS));
             if (now < session.completesAtNanos) continue;
 
             if (!session.search.isComplete()) {
@@ -153,57 +219,122 @@ public final class CityTeleportService {
             SafeDestination destination = session.search.destination();
             City city = CityManager.getCity(server, session.cityId);
             if (city == null || !CityManager.isCityAccessible(server, session.cityId)) { cancelCast(player, "message.njw_after_the_end.city_move.failed_city_unavailable"); continue; }
-            CityRegion region = city.getRegion(session.dimension).orElse(null);
+            CityRegion region = city.getRegion(Level.OVERWORLD).orElse(null);
             if (region == null || !region.containsBlock(destination.blockX(), destination.blockZ())) {
-                CityManager.clearCityArrivalPosition(server, session.cityId, session.dimension);
                 cancelCast(player, "message.njw_after_the_end.city_move.failed_destination_invalid");
                 continue;
             }
             if (!isSafeStandingPosition(player.level(), destination.blockX(), destination.y(), destination.blockZ())) {
-                CityManager.clearCityArrivalPosition(server, session.cityId, session.dimension);
                 cancelCast(player, "message.njw_after_the_end.city_move.failed_destination_unsafe");
                 continue;
             }
             if (hasRestPreventingMonsterNearby(player)) { cancelCast(player, "message.njw_after_the_end.city_move.interrupted_monsters"); continue; }
-
-            destination = resolveSharedArrival(player.level(), city, destination);
             completeTeleport(player, city, destination, now);
+        }
+    }
+
+    private static void tickArrivalAltarCasts(MinecraftServer server) {
+        if (ACTIVE_ARRIVAL_CASTS.isEmpty()) return;
+        for (UUID playerId : List.copyOf(ACTIVE_ARRIVAL_CASTS.keySet())) {
+            ArrivalCastSession session = ACTIVE_ARRIVAL_CASTS.get(playerId);
+            if (session == null) continue;
+            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+            if (player == null) { removeArrivalCastSession(playerId, null); continue; }
+            if (!player.isAlive()) { cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted"); continue; }
+            if (!player.level().dimension().equals(session.dimension)) { cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted_dimension"); continue; }
+            if (player.position().distanceToSqr(session.startPosition) > MOVEMENT_CANCEL_DISTANCE_SQUARED) { cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted_movement"); continue; }
+
+            player.setShiftKeyDown(true);
+            session.ticks++;
+            if (session.ticks % MONSTER_CHECK_INTERVAL_TICKS == 0 && hasRestPreventingMonsterNearby(player)) {
+                cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted_monsters");
+                continue;
+            }
+
+            long now = System.nanoTime();
+            session.bossBar.setProgress(progress(now, session.startedAtNanos, ARRIVAL_CAST_DURATION_NANOS));
+            if (now < session.completesAtNanos) continue;
+
+            City city = CityManager.getCity(server, session.cityId);
+            if (city == null || !CityManager.isCityAccessible(server, session.cityId)) {
+                cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.failed_city_unavailable");
+                continue;
+            }
+            AltarPlacement altar = findActivatedAltar(server, session.cityId, session.altarBlockX, session.altarY, session.altarBlockZ);
+            if (altar == null || !AltarTravelAccess.isInsideInteractionArea(
+                    player.getX(), player.getY(), player.getZ(), altar.blockX(), altar.y(), altar.blockZ(), altar.large())) {
+                cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.failed_altar_unavailable");
+                continue;
+            }
+            if (hasRestPreventingMonsterNearby(player)) {
+                cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted_monsters");
+                continue;
+            }
+
+            CityManager.setCityArrivalAltar(server, city.id(), Level.OVERWORLD, altar.blockX(), altar.y(), altar.blockZ());
+            removeArrivalCastSession(playerId, player);
+            player.sendOverlayMessage(Component.translatable(
+                    "message.njw_after_the_end.arrival_altar.saved", Component.literal(city.name())
+            ));
         }
     }
 
     @SubscribeEvent
     public static void onLivingDamage(LivingDamageEvent.Post event) {
-        if (event.getEntity() instanceof ServerPlayer player && event.getInflictedDamage() > 0.0F && ACTIVE_CASTS.containsKey(player.getUUID())) {
-            cancelCast(player, "message.njw_after_the_end.city_move.interrupted_damage");
-        }
+        if (!(event.getEntity() instanceof ServerPlayer player) || event.getInflictedDamage() <= 0.0F) return;
+        UUID playerId = player.getUUID();
+        if (ACTIVE_CASTS.containsKey(playerId)) cancelCast(player, "message.njw_after_the_end.city_move.interrupted_damage");
+        if (ACTIVE_ARRIVAL_CASTS.containsKey(playerId)) cancelArrivalCast(player, "message.njw_after_the_end.arrival_altar.interrupted_damage");
     }
 
     @SubscribeEvent
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) removeCastSession(player.getUUID());
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        removeCastSession(player.getUUID());
+        removeArrivalCastSession(player.getUUID(), player);
     }
 
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         for (CastSession session : ACTIVE_CASTS.values()) closeBossBar(session.bossBar);
+        for (ArrivalCastSession session : ACTIVE_ARRIVAL_CASTS.values()) closeBossBar(session.bossBar);
         ACTIVE_CASTS.clear();
+        ACTIVE_ARRIVAL_CASTS.clear();
         COOLDOWN_DEADLINES.clear();
     }
 
-    private static SafeDestination resolveSharedArrival(ServerLevel level, City city, SafeDestination calculated) {
-        MinecraftServer server = level.getServer();
-        ResourceKey<Level> dimension = level.dimension();
-        CitySavedData.CityArrivalPosition stored = CityManager.getCityArrivalPosition(server, city.id(), dimension);
+    private static AltarPlacement resolveArrivalAltar(MinecraftServer server, City city) {
+        CitySavedData.CityArrivalAltar stored = CityManager.getCityArrivalAltar(server, city.id(), Level.OVERWORLD);
         if (stored != null) {
-            int x = stored.blockX(), y = stored.y(), z = stored.blockZ();
-            if (city.contains(dimension, x, z)) {
-                level.getChunk(x >> 4, z >> 4);
-                if (isSafeStandingPosition(level, x, y, z)) return new SafeDestination(x, y, z);
-            }
-            CityManager.clearCityArrivalPosition(server, city.id(), dimension);
+            AltarPlacement altar = findActivatedAltar(server, city.id(), stored.blockX(), stored.y(), stored.blockZ());
+            if (altar != null) return altar;
+            CityManager.clearCityArrivalAltar(server, city.id(), Level.OVERWORLD);
         }
-        CityManager.setCityArrivalPosition(server, city.id(), dimension, calculated.blockX(), calculated.y(), calculated.blockZ());
-        return calculated;
+        for (AltarPlacement altar : AltarManager.getPlacements(server, city.id())) if (altar.activated()) return altar;
+        return null;
+    }
+
+    private static AltarPlacement findActivatedAltarContaining(MinecraftServer server, City city, ServerPlayer player) {
+        AltarPlacement best = null;
+        double bestDistance = Double.POSITIVE_INFINITY;
+        for (AltarPlacement altar : AltarManager.getPlacements(server, city.id())) {
+            if (!altar.activated() || !AltarTravelAccess.isInsideInteractionArea(
+                    player.getX(), player.getY(), player.getZ(), altar.blockX(), altar.y(), altar.blockZ(), altar.large())) continue;
+            double centerX = altar.blockX() + AltarTravelAccess.centerOffset(altar.large()) + 0.5D;
+            double centerZ = altar.blockZ() + AltarTravelAccess.centerOffset(altar.large()) + 0.5D;
+            double dx = player.getX() - centerX;
+            double dz = player.getZ() - centerZ;
+            double distance = dx * dx + dz * dz;
+            if (distance < bestDistance) { bestDistance = distance; best = altar; }
+        }
+        return best;
+    }
+
+    private static AltarPlacement findActivatedAltar(MinecraftServer server, UUID cityId, int blockX, int y, int blockZ) {
+        for (AltarPlacement altar : AltarManager.getPlacements(server, cityId)) {
+            if (altar.activated() && altar.blockX() == blockX && altar.y() == y && altar.blockZ() == blockZ) return altar;
+        }
+        return null;
     }
 
     private static void completeTeleport(ServerPlayer player, City city, SafeDestination destination, long now) {
@@ -234,13 +365,29 @@ public final class CityTeleportService {
         player.sendOverlayMessage(Component.translatable(translationKey));
     }
 
+    private static void cancelArrivalCast(ServerPlayer player, String translationKey) {
+        if (!ACTIVE_ARRIVAL_CASTS.containsKey(player.getUUID())) return;
+        removeArrivalCastSession(player.getUUID(), player);
+        player.sendOverlayMessage(Component.translatable(translationKey));
+    }
+
     private static void removeCastSession(UUID playerId) {
         CastSession session = ACTIVE_CASTS.remove(playerId);
         if (session != null) closeBossBar(session.bossBar);
     }
 
-    private static ServerBossEvent createCastBossBar(ServerLevel level, ServerPlayer player, City city) {
-        ServerBossEvent bar = new ServerBossEvent(Mth.createInsecureUUID(level.getRandom()), Component.translatable("message.njw_after_the_end.city_move.boss_bar", Component.literal(city.name())), BossEvent.BossBarColor.GREEN, BossEvent.BossBarOverlay.PROGRESS);
+    private static void removeArrivalCastSession(UUID playerId, ServerPlayer player) {
+        ArrivalCastSession session = ACTIVE_ARRIVAL_CASTS.remove(playerId);
+        if (session == null) return;
+        closeBossBar(session.bossBar);
+        if (player != null) player.setShiftKeyDown(session.originalShiftDown);
+    }
+
+    private static ServerBossEvent createBossBar(ServerLevel level, ServerPlayer player, Component title) {
+        ServerBossEvent bar = new ServerBossEvent(
+                Mth.createInsecureUUID(level.getRandom()), title,
+                BossEvent.BossBarColor.GREEN, BossEvent.BossBarOverlay.PROGRESS
+        );
         bar.setProgress(0.0F);
         bar.setPlayBossMusic(false);
         bar.setCreateWorldFog(false);
@@ -257,9 +404,15 @@ public final class CityTeleportService {
     private static boolean hasRestPreventingMonsterNearby(ServerPlayer player) {
         ServerLevel level = player.level();
         Vec3 center = Vec3.atBottomCenterOf(player.blockPosition());
-        AABB box = new AABB(center.x() - MONSTER_HORIZONTAL_RANGE, center.y() - MONSTER_VERTICAL_RANGE, center.z() - MONSTER_HORIZONTAL_RANGE,
-                center.x() + MONSTER_HORIZONTAL_RANGE, center.y() + MONSTER_VERTICAL_RANGE, center.z() + MONSTER_HORIZONTAL_RANGE);
+        AABB box = new AABB(
+                center.x() - MONSTER_HORIZONTAL_RANGE, center.y() - MONSTER_VERTICAL_RANGE, center.z() - MONSTER_HORIZONTAL_RANGE,
+                center.x() + MONSTER_HORIZONTAL_RANGE, center.y() + MONSTER_VERTICAL_RANGE, center.z() + MONSTER_HORIZONTAL_RANGE
+        );
         return !level.getEntitiesOfClass(Monster.class, box, monster -> monster.isPreventingPlayerRest(level, player)).isEmpty();
+    }
+
+    private static float progress(long now, long startedAt, long duration) {
+        return (float) Math.max(0.0D, Math.min(1.0D, (double) (now - startedAt) / duration));
     }
 
     private static String formatSeconds(long nanos) {
@@ -270,26 +423,23 @@ public final class CityTeleportService {
     private static final class DestinationSearchTask {
         private final ServerLevel level;
         private final CityRegion region;
-        private final UUID cityId;
-        private final SafeDestination cached;
+        private final AltarPlacement altar;
+        private final List<SearchOffset> altarOffsets;
         private final Set<Long> loadedChunks = new HashSet<>();
         private SearchStage stage;
         private int offsetIndex;
         private int localIndex;
         private int localCenterX;
         private int localCenterZ;
-        private int netherScanY;
-        private int currentX;
-        private int currentZ;
         private SafeDestination destination;
         private int candidatesChecked;
 
-        private DestinationSearchTask(ServerLevel level, CityRegion region, UUID cityId, SafeDestination cached) {
+        private DestinationSearchTask(ServerLevel level, CityRegion region, AltarPlacement altar) {
             this.level = level;
             this.region = region;
-            this.cityId = cityId;
-            this.cached = cached;
-            stage = cached == null ? SearchStage.SELECT_CANDIDATE : SearchStage.CACHED;
+            this.altar = altar;
+            this.altarOffsets = altar == null ? List.of() : (altar.large() ? LARGE_ALTAR_OFFSETS : SMALL_ALTAR_OFFSETS);
+            this.stage = altar == null ? SearchStage.SELECT_CANDIDATE : SearchStage.ALTAR;
         }
 
         private void advance(long budgetNanos) {
@@ -299,29 +449,31 @@ public final class CityTeleportService {
 
         private void advanceOne() {
             switch (stage) {
-                case CACHED -> inspectCached();
+                case ALTAR -> inspectAltarCandidate();
                 case SELECT_CANDIDATE -> selectCandidate();
                 case LOCAL -> inspectLocalCandidate();
-                case NETHER_SCAN -> advanceNetherScan();
                 case COMPLETE -> { }
             }
         }
 
-        private void inspectCached() {
-            if (cached == null || !region.containsBlock(cached.blockX(), cached.blockZ())) {
-                clearCached();
+        private void inspectAltarCandidate() {
+            if (offsetIndex >= altarOffsets.size()) {
+                stage = SearchStage.COMPLETE;
                 return;
             }
-            ensureChunkLoaded(cached.blockX(), cached.blockZ());
-            if (isSafeStandingPosition(level, cached.blockX(), cached.y(), cached.blockZ())) {
-                destination = cached;
+            SearchOffset offset = altarOffsets.get(offsetIndex++);
+            int centerX = altar.blockX() + AltarTravelAccess.centerOffset(altar.large());
+            int centerZ = altar.blockZ() + AltarTravelAccess.centerOffset(altar.large());
+            int x = centerX + offset.dx();
+            int z = centerZ + offset.dz();
+            if (!region.containsBlock(x, z)) return;
+            candidatesChecked++;
+            ensureChunkLoaded(x, z);
+            Integer y = findOverworldSurfaceY(level, x, z);
+            if (y != null) {
+                destination = new SafeDestination(x, y, z);
                 stage = SearchStage.COMPLETE;
-            } else clearCached();
-        }
-
-        private void clearCached() {
-            CityManager.clearCityArrivalPosition(level.getServer(), cityId, level.dimension());
-            stage = SearchStage.SELECT_CANDIDATE;
+            }
         }
 
         private void selectCandidate() {
@@ -330,22 +482,16 @@ public final class CityTeleportService {
                 return;
             }
             SearchOffset offset = SEARCH_OFFSETS.get(offsetIndex++);
-            currentX = region.centerChunkX() * BLOCKS_PER_CHUNK + offset.dx();
-            currentZ = region.centerChunkZ() * BLOCKS_PER_CHUNK + offset.dz();
-            if (!region.containsBlock(currentX, currentZ)) return;
+            int x = region.centerChunkX() * BLOCKS_PER_CHUNK + offset.dx();
+            int z = region.centerChunkZ() * BLOCKS_PER_CHUNK + offset.dz();
+            if (!region.containsBlock(x, z)) return;
             candidatesChecked++;
-
-            if (Level.NETHER.equals(level.dimension())) {
-                ensureChunkLoaded(currentX, currentZ);
-                netherScanY = level.getMaxY() - 2;
-                stage = SearchStage.NETHER_SCAN;
-                return;
-            }
-
-            int baseHeight = level.getChunkSource().getGenerator().getBaseHeight(currentX, currentZ, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, level, level.getChunkSource().randomState());
+            int baseHeight = level.getChunkSource().getGenerator().getBaseHeight(
+                    x, z, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, level, level.getChunkSource().randomState()
+            );
             if (baseHeight <= level.getSeaLevel() || baseHeight <= level.getMinY() || baseHeight >= level.getMaxY()) return;
-            localCenterX = currentX;
-            localCenterZ = currentZ;
+            localCenterX = x;
+            localCenterZ = z;
             localIndex = 0;
             stage = SearchStage.LOCAL;
         }
@@ -367,20 +513,6 @@ public final class CityTeleportService {
             }
         }
 
-        private void advanceNetherScan() {
-            int minY = level.getMinY() + 1;
-            int checked = 0;
-            while (netherScanY >= minY && checked++ < 16) {
-                int y = netherScanY--;
-                if (isSafeStandingPosition(level, currentX, y, currentZ)) {
-                    destination = new SafeDestination(currentX, y, currentZ);
-                    stage = SearchStage.COMPLETE;
-                    return;
-                }
-            }
-            if (netherScanY < minY) stage = SearchStage.SELECT_CANDIDATE;
-        }
-
         private void ensureChunkLoaded(int blockX, int blockZ) {
             int chunkX = blockX >> 4;
             int chunkZ = blockZ >> 4;
@@ -391,7 +523,10 @@ public final class CityTeleportService {
         private boolean isComplete() { return stage == SearchStage.COMPLETE; }
         private boolean hasDestination() { return destination != null; }
         private SafeDestination destination() { return destination; }
-        private String debugSummary() { return "stage=" + stage + ", candidates=" + candidatesChecked + ", loadedChunks=" + loadedChunks.size(); }
+        private String debugSummary() {
+            return "stage=" + stage + ", altar=" + (altar == null ? "none" : altar.blockX() + "," + altar.y() + "," + altar.blockZ())
+                    + ", candidates=" + candidatesChecked + ", loadedChunks=" + loadedChunks.size();
+        }
     }
 
     private static Integer findOverworldSurfaceY(ServerLevel level, int blockX, int blockZ) {
@@ -416,15 +551,17 @@ public final class CityTeleportService {
 
     private static boolean isSafeFloor(ServerLevel level, BlockPos floorPos, BlockState state) {
         if (!state.getFluidState().isEmpty()) return false;
-        if (state.is(Blocks.BEDROCK) || state.is(Blocks.MAGMA_BLOCK) || state.is(Blocks.CAMPFIRE) || state.is(Blocks.SOUL_CAMPFIRE) || state.is(Blocks.CACTUS)) return false;
+        if (state.is(Blocks.BEDROCK) || state.is(Blocks.MAGMA_BLOCK) || state.is(Blocks.CAMPFIRE)
+                || state.is(Blocks.SOUL_CAMPFIRE) || state.is(Blocks.CACTUS)) return false;
         return state.isFaceSturdy(level, floorPos, Direction.UP);
     }
 
     private static boolean isSafePlayerSpace(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
         if (!state.getFluidState().isEmpty() || !state.getCollisionShape(level, pos).isEmpty()) return false;
-        return !state.is(Blocks.FIRE) && !state.is(Blocks.SOUL_FIRE) && !state.is(Blocks.POWDER_SNOW) && !state.is(Blocks.SWEET_BERRY_BUSH)
-                && !state.is(Blocks.WITHER_ROSE) && !state.is(Blocks.NETHER_PORTAL) && !state.is(Blocks.END_PORTAL) && !state.is(Blocks.END_GATEWAY);
+        return !state.is(Blocks.FIRE) && !state.is(Blocks.SOUL_FIRE) && !state.is(Blocks.POWDER_SNOW)
+                && !state.is(Blocks.SWEET_BERRY_BUSH) && !state.is(Blocks.WITHER_ROSE)
+                && !state.is(Blocks.NETHER_PORTAL) && !state.is(Blocks.END_PORTAL) && !state.is(Blocks.END_GATEWAY);
     }
 
     private static List<SearchOffset> createSearchOffsets() {
@@ -447,13 +584,34 @@ public final class CityTeleportService {
     private static List<SearchOffset> createLocalOffsets() {
         List<SearchOffset> result = new ArrayList<>();
         for (int dx = -LOCAL_SEARCH_RADIUS; dx <= LOCAL_SEARCH_RADIUS; dx++) {
-            for (int dz = -LOCAL_SEARCH_RADIUS; dz <= LOCAL_SEARCH_RADIUS; dz++) result.add(new SearchOffset(dx, dz, dx * dx + dz * dz));
+            for (int dz = -LOCAL_SEARCH_RADIUS; dz <= LOCAL_SEARCH_RADIUS; dz++) {
+                result.add(new SearchOffset(dx, dz, dx * dx + dz * dz));
+            }
         }
         result.sort(Comparator.comparingInt(SearchOffset::distanceSquared));
         return List.copyOf(result);
     }
 
-    private enum SearchStage { CACHED, SELECT_CANDIDATE, LOCAL, NETHER_SCAN, COMPLETE }
+    private static List<SearchOffset> createAltarSearchOffsets(boolean large) {
+        int half = AltarTravelAccess.centerOffset(large);
+        int radius = half + ALTAR_SEARCH_MARGIN;
+        List<SearchOffset> outside = new ArrayList<>();
+        List<SearchOffset> inside = new ArrayList<>();
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                SearchOffset offset = new SearchOffset(dx, dz, dx * dx + dz * dz);
+                if (Math.abs(dx) > half || Math.abs(dz) > half) outside.add(offset);
+                else inside.add(offset);
+            }
+        }
+        Comparator<SearchOffset> byDistance = Comparator.comparingInt(SearchOffset::distanceSquared);
+        outside.sort(byDistance);
+        inside.sort(byDistance);
+        outside.addAll(inside);
+        return List.copyOf(outside);
+    }
+
+    private enum SearchStage { ALTAR, SELECT_CANDIDATE, LOCAL, COMPLETE }
     private record SearchOffset(int dx, int dz, int distanceSquared) { }
     private record SafeDestination(int blockX, int y, int blockZ) { }
 
@@ -467,7 +625,8 @@ public final class CityTeleportService {
         private final ServerBossEvent bossBar;
         private int ticks;
 
-        private CastSession(UUID cityId, ResourceKey<Level> dimension, Vec3 startPosition, long startedAtNanos, long completesAtNanos, DestinationSearchTask search, ServerBossEvent bossBar) {
+        private CastSession(UUID cityId, ResourceKey<Level> dimension, Vec3 startPosition, long startedAtNanos,
+                            long completesAtNanos, DestinationSearchTask search, ServerBossEvent bossBar) {
             this.cityId = cityId;
             this.dimension = dimension;
             this.startPosition = startPosition;
@@ -475,6 +634,35 @@ public final class CityTeleportService {
             this.completesAtNanos = completesAtNanos;
             this.search = search;
             this.bossBar = bossBar;
+        }
+    }
+
+    private static final class ArrivalCastSession {
+        private final UUID cityId;
+        private final ResourceKey<Level> dimension;
+        private final int altarBlockX;
+        private final int altarY;
+        private final int altarBlockZ;
+        private final Vec3 startPosition;
+        private final long startedAtNanos;
+        private final long completesAtNanos;
+        private final ServerBossEvent bossBar;
+        private final boolean originalShiftDown;
+        private int ticks;
+
+        private ArrivalCastSession(UUID cityId, ResourceKey<Level> dimension, int altarBlockX, int altarY, int altarBlockZ,
+                                   Vec3 startPosition, long startedAtNanos, long completesAtNanos,
+                                   ServerBossEvent bossBar, boolean originalShiftDown) {
+            this.cityId = cityId;
+            this.dimension = dimension;
+            this.altarBlockX = altarBlockX;
+            this.altarY = altarY;
+            this.altarBlockZ = altarBlockZ;
+            this.startPosition = startPosition;
+            this.startedAtNanos = startedAtNanos;
+            this.completesAtNanos = completesAtNanos;
+            this.bossBar = bossBar;
+            this.originalShiftDown = originalShiftDown;
         }
     }
 }
