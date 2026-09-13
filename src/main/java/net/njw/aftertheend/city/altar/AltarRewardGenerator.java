@@ -24,7 +24,6 @@ final class AltarRewardGenerator {
     private static final List<RewardEntry> NETHER_REWARDS = List.of(
             new RewardEntry(Items.QUARTZ, 16, 32, 18, false),
             new RewardEntry(Items.GLOWSTONE_DUST, 16, 32, 16, false),
-            new RewardEntry(Items.BLAZE_ROD, 4, 10, 14, false),
             new RewardEntry(Items.MAGMA_CREAM, 4, 10, 12, false),
             new RewardEntry(Items.GHAST_TEAR, 2, 5, 8, false),
             new RewardEntry(Items.CRYING_OBSIDIAN, 2, 6, 8, false)
@@ -34,8 +33,7 @@ final class AltarRewardGenerator {
             new RewardEntry(Items.CHORUS_FRUIT, 8, 20, 14, false),
             new RewardEntry(Items.POPPED_CHORUS_FRUIT, 6, 16, 12, false),
             new RewardEntry(Items.END_ROD, 4, 12, 10, false),
-            new RewardEntry(Items.PURPUR_BLOCK, 8, 24, 10, false),
-            new RewardEntry(Items.SHULKER_SHELL, 1, 3, 6, false)
+            new RewardEntry(Items.PURPUR_BLOCK, 8, 24, 10, false)
     );
     private static final List<RewardEntry> TREASURE_REWARDS = List.of(
             new RewardEntry(Items.EXPERIENCE_BOTTLE, 16, 32, 20, false),
@@ -45,7 +43,7 @@ final class AltarRewardGenerator {
             new RewardEntry(Items.EMERALD, 12, 24, 12, false)
     );
     private static final List<RewardEntry> RARE_REWARDS = List.of(
-            new RewardEntry(Items.WITHER_SKELETON_SKULL, 1, 1, 50, false),
+            new RewardEntry(Items.WITHER_SKELETON_SKULL, 1, 1, 20, false),
             new RewardEntry(Items.ANCIENT_DEBRIS, 1, 2, 40, false),
             new RewardEntry(Items.ENCHANTED_GOLDEN_APPLE, 1, 1, 10, false)
     );
