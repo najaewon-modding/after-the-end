@@ -21,6 +21,8 @@ public final class CityMoveRecallEffect {
     private static final DustParticleOptions STRAND_A = new DustParticleOptions(0x3A8DFF, 0.70F);
     private static final DustParticleOptions STRAND_B = new DustParticleOptions(0x55D8FF, 0.66F);
     private static final DustParticleOptions HIGHLIGHT = new DustParticleOptions(0xD0F6FF, 0.56F);
+    private static final double PORTAL_TRIGGER_START_PROGRESS = 0.50D;
+    private static final double FINAL_RISE_START_PROGRESS = 0.875D;
     private static final Map<UUID, Long> SOUND_HEARTBEATS = new HashMap<>();
     private static final Set<UUID> PORTAL_TRIGGER_PLAYED = new HashSet<>();
     private static final Set<UUID> FINAL_BURST_PLAYED = new HashSet<>();
@@ -37,10 +39,10 @@ public final class CityMoveRecallEffect {
         }
         SOUND_HEARTBEATS.put(playerId, serverTick);
 
-        int interval = progress < 0.875D ? 3 : 2;
+        int interval = progress < FINAL_RISE_START_PROGRESS ? 3 : 2;
         if (ticks % interval == 0) spawnVisuals(player, ticks, progress);
 
-        if (progress >= 0.875D && PORTAL_TRIGGER_PLAYED.add(playerId)) {
+        if (progress >= PORTAL_TRIGGER_START_PROGRESS && PORTAL_TRIGGER_PLAYED.add(playerId)) {
             player.level().playSound(null, player.blockPosition(), SoundEvents.PORTAL_TRIGGER,
                     SoundSource.PLAYERS, 1.0F, 1.0F);
         }
@@ -76,14 +78,14 @@ public final class CityMoveRecallEffect {
         spawnRing(level, x, y + 0.025D, z, baseRadius, 18, phase, FRAME);
         spawnDriftingParticles(level, x, y, z, ticks, progress, phase, baseRadius);
 
-        if (progress < 0.875D) return;
+        if (progress < FINAL_RISE_START_PROGRESS) return;
 
-        double finalPhase = Math.clamp((progress - 0.875D) / 0.125D, 0.0D, 1.0D);
+        double finalPhase = Math.clamp((progress - FINAL_RISE_START_PROGRESS) / (1.0D - FINAL_RISE_START_PROGRESS), 0.0D, 1.0D);
         double rise = finalPhase * finalPhase;
-        double density = smoothstep(0.875D, 0.995D, progress);
+        double density = smoothstep(FINAL_RISE_START_PROGRESS, 0.995D, progress);
         double tighten = smoothstep(0.93D, 1.0D, progress);
         double height = 0.10D + 2.24D * rise;
-        double topRadius = 0.56D - 0.08D * tighten;
+        double topRadius = 0.60D - 0.08D * tighten;
         double turns = 1.65D + 1.35D * rise + 0.42D * density;
         int strands = finalPhase < 0.52D ? 3 : finalPhase < 0.82D ? 4 : 5;
         int points = 11 + (int) Math.round(9.0D * rise + 6.0D * density);
@@ -108,7 +110,7 @@ public final class CityMoveRecallEffect {
 
     private static void spawnDriftingParticles(ServerLevel level, double x, double y, double z,
                                                int ticks, double progress, double phase, double baseRadius) {
-        int count = progress < 0.875D ? 5 : 3;
+        int count = progress < FINAL_RISE_START_PROGRESS ? 5 : 3;
         for (int i = 0; i < count; i++) {
             double cycle = (ticks * 0.018D + i * 0.213D) % 1.0D;
             double angle = phase * 0.46D + i * 2.399963229728653D + cycle * 1.8D;
@@ -220,7 +222,7 @@ public final class CityMoveRecallEffect {
         double phase = player.tickCount * 0.31D;
 
         double[] heights = {0.04D, 0.78D, 1.52D, 2.24D};
-        double[] radii = {0.82D, 0.64D, 0.50D, 0.40D};
+        double[] radii = {0.82D, 0.67D, 0.54D, 0.44D};
         for (int i = 0; i < heights.length; i++) {
             spawnRing(level, x, y + heights[i], z, radii[i], 16, phase + i * 0.55D, HIGHLIGHT);
         }
@@ -229,7 +231,7 @@ public final class CityMoveRecallEffect {
             for (int step = 0; step < 13; step++) {
                 double vertical = step / 12.0D;
                 double angle = phase + offset + vertical * Math.PI * 5.6D;
-                double radius = 0.82D - 0.48D * vertical;
+                double radius = 0.82D - 0.44D * vertical;
                 level.sendParticles(
                         HIGHLIGHT,
                         x + Math.cos(angle) * radius,
