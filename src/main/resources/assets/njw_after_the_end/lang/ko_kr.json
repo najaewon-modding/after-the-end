@@ -24,6 +24,7 @@
   "message.njw_after_the_end.ender_eye.no_stronghold": "이 도시에서 접근 가능한 근거지를 찾을 수 없습니다.",
   "message.njw_after_the_end.city_load.in_progress": "도시 청크를 불러오는 중입니다. 작업이 끝난 뒤 다시 접속해 주세요.",
   "message.njw_after_the_end.altar.cannot_activate": "더 이상 제단을 활성화할 수 없습니다",
+  "message.njw_after_the_end.altar.dragon_egg_rank_too_low": "이 도시의 제단을 활성화하려면 #%s 이상의 드래곤 알이 필요합니다.",
 
   "message.njw_after_the_end.city_move.already_casting": "이미 도시 이동 또는 도착 제단 지정을 진행하고 있습니다.",
   "message.njw_after_the_end.city_move.cooldown": "도시 이동 재사용 대기시간입니다. %s초 남았습니다.",
