@@ -10,6 +10,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.njw.aftertheend.AfterTheEnd;
+import net.njw.aftertheend.network.CitySyncService;
 
 public final class AltarManager {
     private static final int[][] HIDDEN_CHEST_OFFSETS = {
@@ -48,6 +49,7 @@ public final class AltarManager {
     public static void markGenerated(MinecraftServer server, UUID cityId, List<AltarPlacement> placements) {
         placeHiddenRewardChests(server, placements);
         getSavedData(server).markGenerated(cityId, placements);
+        CitySyncService.syncToAll(server);
     }
 
     public static void removeCity(MinecraftServer server, UUID cityId) {
