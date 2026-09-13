@@ -47,26 +47,30 @@ public final class HiddenCityPreparationService {
 
     public static void refreshQueue(MinecraftServer server) {
         int target = CityLifecycleService.getLockedCityReserveTarget(server);
+        List<City> accessibleCities = List.copyOf(CityManager.getAccessibleCities(server));
         List<City> reserveCities = CityManager.getLockedCities(server).stream().limit(target).toList();
-        Set<UUID> reserveIds = new HashSet<>();
-        for (City city : reserveCities) reserveIds.add(city.id());
+        Set<UUID> targetIds = new HashSet<>();
+        for (City city : accessibleCities) targetIds.add(city.id());
+        for (City city : reserveCities) targetIds.add(city.id());
 
-        if (activeCityId != null && !reserveIds.contains(activeCityId)) resetActive(true);
+        if (activeCityId != null && !targetIds.contains(activeCityId)) resetActive(true);
 
         QUEUE.removeIf(cityId -> {
             City city = CityManager.getCity(server, cityId);
-            boolean remove = !reserveIds.contains(cityId) || city == null
-                    || CityManager.isCityAccessible(server, cityId) || AltarManager.isGenerated(server, cityId);
+            boolean remove = !targetIds.contains(cityId) || city == null || AltarManager.isGenerated(server, cityId);
             if (remove) QUEUED.remove(cityId);
             return remove;
         });
-        for (City city : reserveCities) {
-            UUID cityId = city.id();
-            if (AltarManager.isGenerated(server, cityId) || FAILED_THIS_SESSION.contains(cityId)) continue;
-            if (cityId.equals(activeCityId) || QUEUED.contains(cityId)) continue;
-            QUEUE.addLast(cityId);
-            QUEUED.add(cityId);
-        }
+        for (City city : accessibleCities) enqueueIfNeeded(server, city);
+        for (City city : reserveCities) enqueueIfNeeded(server, city);
+    }
+
+    private static void enqueueIfNeeded(MinecraftServer server, City city) {
+        UUID cityId = city.id();
+        if (AltarManager.isGenerated(server, cityId) || FAILED_THIS_SESSION.contains(cityId)) return;
+        if (cityId.equals(activeCityId) || QUEUED.contains(cityId)) return;
+        QUEUE.addLast(cityId);
+        QUEUED.add(cityId);
     }
 
     public static void removeCity(UUID cityId) {
@@ -98,7 +102,7 @@ public final class HiddenCityPreparationService {
             UUID cityId = QUEUE.removeFirst();
             QUEUED.remove(cityId);
             City city = CityManager.getCity(server, cityId);
-            if (city == null || CityManager.isCityAccessible(server, cityId) || AltarManager.isGenerated(server, cityId)) continue;
+            if (city == null || AltarManager.isGenerated(server, cityId)) continue;
             try {
                 AltarPlacementService.PreparationSeed preparationSeed = AltarPlacementService.createPreparationSeed(server, city);
                 if (preparationSeed == null) continue;
@@ -109,25 +113,28 @@ public final class HiddenCityPreparationService {
                 pendingPreparationFuture = null;
                 pendingAdvanceFuture = null;
                 plannerStartDelayTicks = PLANNER_START_DELAY_TICKS;
-                AfterTheEnd.LOGGER.debug("Hidden city preparation queued: city={}", cityId);
+                AfterTheEnd.LOGGER.debug(
+                        "Altar preparation queued: city={}, accessible={}",
+                        cityId, CityManager.isCityAccessible(server, cityId)
+                );
                 return;
             } catch (RuntimeException exception) {
                 FAILED_THIS_SESSION.add(cityId);
-                AfterTheEnd.LOGGER.error("Could not start hidden city preparation: city={}", cityId, exception);
+                AfterTheEnd.LOGGER.error("Could not start Altar preparation: city={}", cityId, exception);
             }
         }
     }
 
     private static void tickActive(MinecraftServer server) {
         City city = CityManager.getCity(server, activeCityId);
-        if (city == null || CityManager.isCityAccessible(server, activeCityId)) {
+        if (city == null) {
             resetActive(true);
             return;
         }
         if (AltarManager.isGenerated(server, activeCityId)) {
             UUID completed = activeCityId;
             resetActive(false);
-            AfterTheEnd.LOGGER.debug("Hidden city is READY: city={}", completed);
+            AfterTheEnd.LOGGER.debug("Altar preparation is READY: city={}", completed);
             AltarRitualHandler.retryPending(server);
             return;
         }
@@ -145,7 +152,7 @@ public final class HiddenCityPreparationService {
                     AltarPlacementService.completePreparation(server, city, activePreparation, activeStep.plans());
                     UUID completed = activeCityId;
                     resetActive(false);
-                    AfterTheEnd.LOGGER.info("Hidden city is READY: city={}", completed);
+                    AfterTheEnd.LOGGER.info("Altar preparation is READY: city={}", completed);
                     refreshQueue(server);
                     AltarRitualHandler.retryPending(server);
                     return;
@@ -164,7 +171,7 @@ public final class HiddenCityPreparationService {
         } catch (RuntimeException exception) {
             UUID failed = activeCityId;
             FAILED_THIS_SESSION.add(failed);
-            AfterTheEnd.LOGGER.error("Hidden city preparation failed: city={}", failed, exception);
+            AfterTheEnd.LOGGER.error("Altar preparation failed: city={}", failed, exception);
             resetActive(true);
             refreshQueue(server);
         }
@@ -177,7 +184,7 @@ public final class HiddenCityPreparationService {
                 return false;
             }
             AltarPlacementService.PreparationSeed seed = pendingPreparationSeed;
-            if (seed == null) throw new IllegalStateException("Hidden city has no preparation seed.");
+            if (seed == null) throw new IllegalStateException("Altar preparation has no preparation seed.");
             pendingPlannerStartedNanos = System.nanoTime();
             pendingPreparationFuture = CompletableFuture.supplyAsync(
                     () -> AltarPlacementService.buildPreparation(seed), plannerExecutor()
@@ -188,10 +195,10 @@ public final class HiddenCityPreparationService {
         try {
             activePreparation = pendingPreparationFuture.join();
         } catch (CompletionException exception) {
-            throw new IllegalStateException("Hidden-city virtual planning failed for " + activeCityId, exception.getCause());
+            throw new IllegalStateException("Altar virtual planning failed for " + activeCityId, exception.getCause());
         }
         AfterTheEnd.LOGGER.debug(
-                "Hidden city virtual planning completed in {}sec: city={}",
+                "Altar virtual planning completed in {}sec: city={}",
                 AltarPlacementPlanner.formatSeconds((System.nanoTime() - pendingPlannerStartedNanos) / 1_000_000_000.0), activeCityId
         );
         pendingPreparationFuture = null;
@@ -211,7 +218,7 @@ public final class HiddenCityPreparationService {
         try {
             activeStep = pendingAdvanceFuture.join();
         } catch (CompletionException exception) {
-            throw new IllegalStateException("Hidden-city planner advance failed for " + activeCityId, exception.getCause());
+            throw new IllegalStateException("Altar planner advance failed for " + activeCityId, exception.getCause());
         }
         pendingAdvanceFuture = null;
         return true;
@@ -220,7 +227,7 @@ public final class HiddenCityPreparationService {
     private static ExecutorService plannerExecutor() {
         if (plannerExecutor == null || plannerExecutor.isShutdown()) {
             plannerExecutor = Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "after-the-end-hidden-planner");
+                Thread thread = new Thread(runnable, "after-the-end-altar-planner");
                 thread.setDaemon(true);
                 thread.setPriority(Thread.MIN_PRIORITY);
                 return thread;
@@ -252,10 +259,10 @@ public final class HiddenCityPreparationService {
             pendingChunkFuture.join();
             for (CompletableFuture<?> future : pendingChunkFutures) future.join();
         } catch (CompletionException exception) {
-            throw new IllegalStateException("Async hidden-city chunk batch generation failed at " + pendingChunks, exception.getCause());
+            throw new IllegalStateException("Async Altar chunk batch generation failed at " + pendingChunks, exception.getCause());
         }
         AfterTheEnd.LOGGER.debug(
-                "Hidden city chunk batch {} {} chunk(s) {}sec city={}",
+                "Altar chunk batch {} {} chunk(s) {}sec city={}",
                 AltarPlacementPlanner.statusName(pendingChunkStatus), pendingChunks.size(),
                 AltarPlacementPlanner.formatSeconds((System.nanoTime() - pendingChunkStartedNanos) / 1_000_000_000.0), activeCityId
         );
