@@ -7,91 +7,44 @@ import net.minecraft.resources.Identifier;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.client.gui.CityListScreen;
+import net.njw.aftertheend.network.CityArrivalAltarRequestPayload;
 import org.lwjgl.glfw.GLFW;
 
-@EventBusSubscriber(
-        modid = AfterTheEnd.MODID,
-        value = Dist.CLIENT
-)
+@EventBusSubscriber(modid = AfterTheEnd.MODID, value = Dist.CLIENT)
 public final class CityKeyHandler {
+    private static final KeyMapping.Category CATEGORY = new KeyMapping.Category(
+            Identifier.fromNamespaceAndPath(AfterTheEnd.MODID, "city")
+    );
+    private static final KeyMapping OPEN_CITY_LIST = new KeyMapping(
+            "key.njw_after_the_end.open_city_list", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_C, CATEGORY
+    );
+    private static final KeyMapping SET_ARRIVAL_ALTAR = new KeyMapping(
+            "key.njw_after_the_end.set_arrival_altar", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, CATEGORY
+    );
 
-    private static final KeyMapping.Category
-            CATEGORY =
-            new KeyMapping.Category(
-                    Identifier.fromNamespaceAndPath(
-                            AfterTheEnd.MODID,
-                            "city"
-                    )
-            );
-
-    /*
-     * 임시 기본키는 C.
-     *
-     * Minecraft Controls 메뉴에서
-     * 사용자가 자유롭게 변경할 수 있다.
-     */
-    private static final KeyMapping
-            OPEN_CITY_LIST =
-            new KeyMapping(
-                    "key.njw_after_the_end.open_city_list",
-                    InputConstants.Type.KEYSYM,
-                    GLFW.GLFW_KEY_C,
-                    CATEGORY
-            );
-
-    private CityKeyHandler() {
-    }
-
-    /*
-     * =========================================================
-     * Key Registration
-     * =========================================================
-     */
+    private CityKeyHandler() { }
 
     @SubscribeEvent
-    public static void onRegisterKeyMappings(
-            RegisterKeyMappingsEvent event
-    ) {
-        event.registerCategory(
-                CATEGORY
-        );
-
-        event.register(
-                OPEN_CITY_LIST
-        );
+    public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+        event.registerCategory(CATEGORY);
+        event.register(OPEN_CITY_LIST);
+        event.register(SET_ARRIVAL_ALTAR);
     }
 
-    /*
-     * =========================================================
-     * Client Tick
-     * =========================================================
-     */
-
     @SubscribeEvent
-    public static void onClientTick(
-            ClientTickEvent.Post event
-    ) {
-        while (
-                OPEN_CITY_LIST.consumeClick()
-        ) {
-            Minecraft minecraft =
-                    Minecraft.getInstance();
-
-            /*
-             * 실제 월드 안에 있고
-             * 다른 GUI가 열려 있지 않을 때만 연다.
-             */
-            if (
-                    minecraft.player != null
-                            && minecraft.screen == null
-            ) {
-                minecraft.setScreen(
-                        new CityListScreen()
-                );
+    public static void onClientTick(ClientTickEvent.Post event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        while (OPEN_CITY_LIST.consumeClick()) {
+            if (minecraft.player != null && minecraft.screen == null) minecraft.setScreen(new CityListScreen());
+        }
+        while (SET_ARRIVAL_ALTAR.consumeClick()) {
+            if (minecraft.player != null && minecraft.screen == null) {
+                ClientPacketDistributor.sendToServer(new CityArrivalAltarRequestPayload());
             }
         }
     }
