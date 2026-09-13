@@ -4,6 +4,13 @@
   "key.njw_after_the_end.set_arrival_altar": "도착 제단 지정",
 
   "item.njw_after_the_end.shulker_core": "셜커 코어",
+  "item.njw_after_the_end.replication_pill": "복제 알약",
+  "item.njw_after_the_end.sorting_pill": "정리 알약",
+  "item.njw_after_the_end.smelting_pill": "제련 알약",
+  "item.njw_after_the_end.supply_pill": "보급 알약",
+  "item.njw_after_the_end.concoction_pill": "조제 알약",
+  "item.njw_after_the_end.logistics_pill": "물류 알약",
+  "item.njw_after_the_end.switching_pill": "전환 알약",
   "block.njw_after_the_end.resonance_crystal": "공명 수정",
 
   "gui.njw_after_the_end.city_list.title": "도시 목록",
