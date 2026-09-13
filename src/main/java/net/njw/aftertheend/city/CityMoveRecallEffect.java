@@ -11,10 +11,10 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 
 final class CityMoveRecallEffect {
-    private static final DustParticleOptions FRAME = new DustParticleOptions(0x2EC8FF, 0.78F);
-    private static final DustParticleOptions STRAND_A = new DustParticleOptions(0x3A8DFF, 0.72F);
-    private static final DustParticleOptions STRAND_B = new DustParticleOptions(0x55D8FF, 0.68F);
-    private static final DustParticleOptions HIGHLIGHT = new DustParticleOptions(0xD0F6FF, 0.58F);
+    private static final DustParticleOptions FRAME = new DustParticleOptions(0x2EC8FF, 0.76F);
+    private static final DustParticleOptions STRAND_A = new DustParticleOptions(0x3A8DFF, 0.70F);
+    private static final DustParticleOptions STRAND_B = new DustParticleOptions(0x55D8FF, 0.66F);
+    private static final DustParticleOptions HIGHLIGHT = new DustParticleOptions(0xD0F6FF, 0.56F);
     private static final Set<UUID> FINAL_BURST_PLAYED = new HashSet<>();
 
     private CityMoveRecallEffect() { }
@@ -35,20 +35,20 @@ final class CityMoveRecallEffect {
         double y = player.getY() + 0.025D;
         double z = player.getZ();
 
-        double phase = ticks * (0.105D + progress * 0.185D);
-        double bodyGrowth = smoothstep(0.06D, 0.875D, progress);
-        double finalRise = smoothstep(0.875D, 0.995D, progress);
-        double tighten = smoothstep(0.84D, 1.0D, progress);
-        double pulse = 1.0D + 0.018D * Math.sin(ticks * 0.19D);
+        double heightGrowth = smoothstep(0.05D, 0.75D, progress);
+        double densityGrowth = smoothstep(0.75D, 0.995D, progress);
+        double tighten = smoothstep(0.88D, 1.0D, progress);
+        double pulse = 1.0D + 0.015D * Math.sin(ticks * 0.19D);
+        double phase = ticks * (0.105D + progress * 0.205D);
 
-        double height = 0.18D + 1.25D * bodyGrowth + 0.95D * finalRise;
-        double baseRadius = (0.98D - 0.09D * tighten) * pulse;
-        double topRadius = (0.78D - 0.14D * tighten) / pulse;
-        double turns = 1.35D + 1.45D * bodyGrowth + 0.45D * finalRise;
-        int strands = progress < 0.40D ? 2 : progress < 0.875D ? 3 : 4;
-        int points = 11 + (int) Math.round(bodyGrowth * 9.0D + finalRise * 5.0D);
+        double height = 0.18D + 2.16D * heightGrowth;
+        double baseRadius = (0.92D - 0.06D * tighten) * pulse;
+        double topRadius = (0.72D - 0.08D * tighten) / pulse;
+        double turns = 1.35D + 1.55D * heightGrowth + 0.38D * densityGrowth;
+        int strands = progress < 0.38D ? 2 : progress < 0.80D ? 3 : progress < 0.92D ? 4 : 5;
+        int points = 10 + (int) Math.round(heightGrowth * 8.0D + densityGrowth * 8.0D);
 
-        spawnRing(level, x, y + 0.025D, z, baseRadius, 20, phase, FRAME);
+        spawnRing(level, x, y + 0.025D, z, baseRadius, 18, phase, FRAME);
 
         for (int strand = 0; strand < strands; strand++) {
             double strandOffset = Math.PI * 2.0D * strand / strands;
@@ -56,13 +56,18 @@ final class CityMoveRecallEffect {
                     height, baseRadius, topRadius, turns, points);
         }
 
-        if (progress >= 0.72D) {
-            double crownAlpha = smoothstep(0.72D, 0.90D, progress);
-            int crownPoints = 10 + (int) Math.round(crownAlpha * 8.0D);
-            spawnRing(level, x, y + height, z, topRadius, crownPoints, phase + turns * Math.PI * 2.0D, FRAME);
+        if (progress >= 0.66D) {
+            double crownGrowth = smoothstep(0.66D, 0.82D, progress);
+            int crownPoints = 8 + (int) Math.round(crownGrowth * 6.0D + densityGrowth * 4.0D);
+            spawnRing(level, x, y + height, z, topRadius, crownPoints,
+                    phase + turns * Math.PI * 2.0D, FRAME);
         }
 
-        if (progress >= 0.90D) {
+        if (progress >= 0.82D) {
+            spawnSecondaryStrands(level, x, y, z, phase, ticks, progress, height,
+                    baseRadius, topRadius, densityGrowth);
+        }
+        if (progress >= 0.94D) {
             spawnFinalCoreStrand(level, x, y, z, phase, ticks, progress, height);
         }
     }
@@ -91,15 +96,44 @@ final class CityMoveRecallEffect {
         }
     }
 
+    private static void spawnSecondaryStrands(ServerLevel level, double x, double y, double z,
+                                              double phase, int ticks, double progress, double height,
+                                              double baseRadius, double topRadius, double densityGrowth) {
+        int strandCount = progress < 0.92D ? 1 : 2;
+        int points = 8 + (int) Math.round(densityGrowth * 10.0D);
+        double turns = 1.65D + 1.05D * densityGrowth;
+        for (int strand = 0; strand < strandCount; strand++) {
+            double offset = Math.PI * (0.55D + strand) + densityGrowth * 0.35D;
+            int runner = Math.floorMod(ticks / 2 + strand * 6, points);
+            for (int step = 0; step < points; step++) {
+                double vertical = points <= 1 ? 0.0D : step / (double) (points - 1);
+                double radiusCurve = vertical * vertical * (3.0D - 2.0D * vertical);
+                double radius = (baseRadius - 0.12D) + ((topRadius - 0.10D) - (baseRadius - 0.12D)) * radiusCurve;
+                double angle = -phase * (0.82D + 0.34D * densityGrowth) + offset
+                        + vertical * Math.PI * 2.0D * turns;
+                int runnerDistance = Math.abs(step - runner);
+                runnerDistance = Math.min(runnerDistance, points - runnerDistance);
+                DustParticleOptions particle = runnerDistance == 0 ? HIGHLIGHT : STRAND_B;
+                level.sendParticles(
+                        particle,
+                        x + Math.cos(angle) * radius,
+                        y + 0.055D + height * vertical * 0.98D,
+                        z + Math.sin(angle) * radius,
+                        1, 0.0D, 0.0D, 0.0D, 0.0D
+                );
+            }
+        }
+    }
+
     private static void spawnFinalCoreStrand(ServerLevel level, double x, double y, double z,
                                              double phase, int ticks, double progress, double height) {
-        double intensity = smoothstep(0.90D, 1.0D, progress);
+        double intensity = smoothstep(0.94D, 1.0D, progress);
         int points = 10 + (int) Math.round(intensity * 8.0D);
-        double turns = 1.8D + 1.3D * intensity;
+        double turns = 1.9D + 1.2D * intensity;
         for (int step = 0; step < points; step++) {
             double vertical = points <= 1 ? 0.0D : step / (double) (points - 1);
             double angle = -phase * 1.35D + vertical * Math.PI * 2.0D * turns;
-            double radius = 0.56D - 0.13D * vertical - 0.06D * intensity;
+            double radius = 0.50D - 0.11D * vertical - 0.05D * intensity;
             DustParticleOptions particle = (step + ticks / 2) % 6 <= 1 ? HIGHLIGHT : STRAND_B;
             level.sendParticles(
                     particle,
@@ -133,16 +167,16 @@ final class CityMoveRecallEffect {
         double phase = player.tickCount * 0.31D;
 
         double[] heights = {0.04D, 0.78D, 1.52D, 2.24D};
-        double[] radii = {0.90D, 0.73D, 0.58D, 0.46D};
+        double[] radii = {0.84D, 0.69D, 0.55D, 0.44D};
         for (int i = 0; i < heights.length; i++) {
             spawnRing(level, x, y + heights[i], z, radii[i], 16, phase + i * 0.55D, HIGHLIGHT);
         }
-        for (int strand = 0; strand < 4; strand++) {
-            double offset = Math.PI * 2.0D * strand / 4.0D;
-            for (int step = 0; step < 12; step++) {
-                double vertical = step / 11.0D;
-                double angle = phase + offset + vertical * Math.PI * 5.2D;
-                double radius = 0.88D - 0.52D * vertical;
+        for (int strand = 0; strand < 5; strand++) {
+            double offset = Math.PI * 2.0D * strand / 5.0D;
+            for (int step = 0; step < 13; step++) {
+                double vertical = step / 12.0D;
+                double angle = phase + offset + vertical * Math.PI * 5.6D;
+                double radius = 0.84D - 0.48D * vertical;
                 level.sendParticles(
                         HIGHLIGHT,
                         x + Math.cos(angle) * radius,
@@ -152,7 +186,7 @@ final class CityMoveRecallEffect {
                 );
             }
         }
-        level.sendParticles(ParticleTypes.END_ROD, x, y + 1.12D, z, 12, 0.24D, 0.72D, 0.24D, 0.045D);
+        level.sendParticles(ParticleTypes.END_ROD, x, y + 1.12D, z, 10, 0.22D, 0.70D, 0.22D, 0.042D);
         level.playSound(null, player.blockPosition(), SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1.15F, 1.28F);
         level.playSound(null, player.blockPosition(), SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 0.95F, 1.95F);
         level.playSound(null, player.blockPosition(), SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS, 0.80F, 1.65F);
