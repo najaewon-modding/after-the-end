@@ -24,6 +24,7 @@
   "message.njw_after_the_end.ender_eye.no_stronghold": "No accessible stronghold was found in this city.",
   "message.njw_after_the_end.city_load.in_progress": "City chunks are being loaded. Please reconnect after loading has finished.",
   "message.njw_after_the_end.altar.cannot_activate": "No more Altars can be activated.",
+  "message.njw_after_the_end.altar.dragon_egg_rank_too_low": "This city's Altars require Dragon Egg #%s or higher.",
 
   "message.njw_after_the_end.city_move.already_casting": "A city travel action is already being cast.",
   "message.njw_after_the_end.city_move.cooldown": "City Move is on cooldown. %s seconds remaining.",
