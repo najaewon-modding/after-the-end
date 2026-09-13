@@ -29,6 +29,7 @@ public final class CityListScreen extends Screen {
     private static final int BUTTON_GAP = 8;
     private static final int NAME_EDGE_PADDING = 2;
     private static final int NAME_EDIT_HEIGHT = 16;
+    private static final long NAME_DOUBLE_CLICK_WINDOW_MS = 500L;
     private static final long MARQUEE_START_PAUSE_MS = 700L;
     private static final long MARQUEE_END_PAUSE_MS = 2000L;
     private static final float MARQUEE_SPEED_PIXELS_PER_SECOND = 24.0F;
@@ -47,6 +48,8 @@ public final class CityListScreen extends Screen {
     private int scrollOffset;
     private long selectedSinceMs = System.currentTimeMillis();
     private UUID editingCityId;
+    private UUID lastNameClickCityId;
+    private long lastNameClickMs = Long.MIN_VALUE;
     private EditBox nameEditBox;
 
     public CityListScreen() {
@@ -214,7 +217,10 @@ public final class CityListScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-        if (click.button() != 0) return super.mouseClicked(click, doubled);
+        if (click.button() != 0) {
+            resetNameDoubleClick();
+            return super.mouseClicked(click, doubled);
+        }
         int left = left();
         int top = top();
         int listTop = top + 34;
@@ -227,6 +233,7 @@ public final class CityListScreen extends Screen {
             int row = index - scrollOffset;
             int y = listTop + row * ROW_HEIGHT;
             if (isInside(click.x(), click.y(), left, y - 3, LIST_WIDTH, ROW_HEIGHT)) {
+                resetNameDoubleClick();
                 if (selectedIndex != index) {
                     stopEditing();
                     selectedIndex = index;
@@ -237,9 +244,17 @@ public final class CityListScreen extends Screen {
         }
 
         ClientCityManager.ClientCity selectedCity = getSelectedCity();
-        if (selectedCity != null && doubled && !isEditing(selectedCity)
+        if (selectedCity != null && !isEditing(selectedCity)
                 && isInside(click.x(), click.y(), detailLeft, listTop - 4, detailWidth, NAME_EDIT_HEIGHT)) {
-            beginEditing(selectedCity);
+            long now = System.currentTimeMillis();
+            boolean secondClick = selectedCity.id().equals(lastNameClickCityId)
+                    && now >= lastNameClickMs && now - lastNameClickMs <= NAME_DOUBLE_CLICK_WINDOW_MS;
+            lastNameClickCityId = selectedCity.id();
+            lastNameClickMs = now;
+            if (secondClick) {
+                resetNameDoubleClick();
+                beginEditing(selectedCity);
+            }
             return true;
         }
 
@@ -247,6 +262,7 @@ public final class CityListScreen extends Screen {
         int primaryX = left + (CONTENT_WIDTH - totalWidth) / 2;
         int buttonY = top + CONTENT_HEIGHT - BUTTON_HEIGHT;
         if (selectedCity != null && isInside(click.x(), click.y(), primaryX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+            resetNameDoubleClick();
             if (isEditing(selectedCity)) {
                 if (isValidEditedName()) saveEditedName(selectedCity);
                 return true;
@@ -260,10 +276,12 @@ public final class CityListScreen extends Screen {
 
         int closeX = primaryX + BUTTON_WIDTH + BUTTON_GAP;
         if (isInside(click.x(), click.y(), closeX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+            resetNameDoubleClick();
             onClose();
             return true;
         }
 
+        resetNameDoubleClick();
         return super.mouseClicked(click, doubled);
     }
 
@@ -281,6 +299,7 @@ public final class CityListScreen extends Screen {
 
     private void beginEditing(ClientCityManager.ClientCity city) {
         if (nameEditBox == null) return;
+        resetNameDoubleClick();
         editingCityId = city.id();
         nameEditBox.setValue(city.name());
         nameEditBox.visible = true;
@@ -290,11 +309,17 @@ public final class CityListScreen extends Screen {
 
     private void stopEditing() {
         editingCityId = null;
+        resetNameDoubleClick();
         if (nameEditBox != null) {
             nameEditBox.setFocused(false);
             nameEditBox.visible = false;
         }
         setFocused(null);
+    }
+
+    private void resetNameDoubleClick() {
+        lastNameClickCityId = null;
+        lastNameClickMs = Long.MIN_VALUE;
     }
 
     private void saveEditedName(ClientCityManager.ClientCity city) {
