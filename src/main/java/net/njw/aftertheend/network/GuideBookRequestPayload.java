@@ -20,7 +20,7 @@ public record GuideBookRequestPayload() implements CustomPacketPayload {
     private static GuideBookRequestPayload decode(RegistryFriendlyByteBuf buffer) { return new GuideBookRequestPayload(); }
 
     public static void handle(GuideBookRequestPayload payload, IPayloadContext context) {
-        if (context.player() instanceof ServerPlayer player) GuideBookService.giveIfMissing(player);
+        if (context.player() instanceof ServerPlayer player) GuideBookService.giveLatest(player);
     }
 
     @Override
