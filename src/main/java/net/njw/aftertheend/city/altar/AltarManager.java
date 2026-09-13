@@ -7,6 +7,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.njw.aftertheend.AfterTheEnd;
 
@@ -66,6 +67,14 @@ public final class AltarManager {
                 continue;
             }
             level.setBlock(chestPos, Blocks.CHEST.defaultBlockState(), 3);
+            if (level.getBlockEntity(chestPos) instanceof ChestBlockEntity chest) {
+                AltarRewardGenerator.fill(level, chest);
+            } else {
+                AfterTheEnd.LOGGER.warn(
+                        "Could not initialize reward chest for Altar at {},{},{}",
+                        placement.blockX(), placement.y(), placement.blockZ()
+                );
+            }
         }
     }
 
