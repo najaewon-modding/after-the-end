@@ -33,4 +33,11 @@ class AltarActivationPolicyTest {
         assertFalse(AltarActivationPolicy.canActivate(3, MAX_ALTARS, 1, 5));
         assertFalse(AltarActivationPolicy.unlocksCity(3, MAX_ALTARS, 1, 5));
     }
+
+    @Test
+    void dragonEggMustMeetOrExceedCityRank() {
+        assertFalse(AltarRitualHandler.isDragonEggRankSufficient(2, 3));
+        assertTrue(AltarRitualHandler.isDragonEggRankSufficient(3, 3));
+        assertTrue(AltarRitualHandler.isDragonEggRankSufficient(4, 3));
+    }
 }
