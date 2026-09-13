@@ -4,6 +4,7 @@ import java.util.function.Supplier;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Rarity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -26,13 +27,13 @@ public final class ModContent {
             ShulkerCoreItem::new
     );
 
-    public static final DeferredItem<Item> REPLICATION_PILL = ITEMS.registerItem("replication_pill", Item::new);
-    public static final DeferredItem<Item> SORTING_PILL = ITEMS.registerItem("sorting_pill", Item::new);
-    public static final DeferredItem<Item> SMELTING_PILL = ITEMS.registerItem("smelting_pill", Item::new);
-    public static final DeferredItem<Item> SUPPLY_PILL = ITEMS.registerItem("supply_pill", Item::new);
-    public static final DeferredItem<Item> CONCOCTION_PILL = ITEMS.registerItem("concoction_pill", Item::new);
-    public static final DeferredItem<Item> LOGISTICS_PILL = ITEMS.registerItem("logistics_pill", Item::new);
-    public static final DeferredItem<Item> SWITCHING_PILL = ITEMS.registerItem("switching_pill", Item::new);
+    public static final DeferredItem<Item> REPLICATION_PILL = registerPill("replication_pill");
+    public static final DeferredItem<Item> SORTING_PILL = registerPill("sorting_pill");
+    public static final DeferredItem<Item> SMELTING_PILL = registerPill("smelting_pill");
+    public static final DeferredItem<Item> SUPPLY_PILL = registerPill("supply_pill");
+    public static final DeferredItem<Item> CONCOCTION_PILL = registerPill("concoction_pill");
+    public static final DeferredItem<Item> LOGISTICS_PILL = registerPill("logistics_pill");
+    public static final DeferredItem<Item> SWITCHING_PILL = registerPill("switching_pill");
 
     public static final DeferredBlock<ResonanceCrystalBlock> RESONANCE_CRYSTAL = BLOCKS.registerBlock(
             "resonance_crystal",
@@ -54,6 +55,10 @@ public final class ModContent {
     );
 
     private ModContent() { }
+
+    private static DeferredItem<Item> registerPill(String name) {
+        return ITEMS.registerItem(name, properties -> new Item(properties.rarity(Rarity.UNCOMMON)));
+    }
 
     public static void register(IEventBus modEventBus) {
         BLOCKS.register(modEventBus);
