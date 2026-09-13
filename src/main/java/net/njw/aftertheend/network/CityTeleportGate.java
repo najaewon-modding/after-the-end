@@ -8,6 +8,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.njw.aftertheend.city.City;
 import net.njw.aftertheend.city.CityManager;
 import net.njw.aftertheend.city.CityTeleportService;
+import net.njw.aftertheend.city.CityTravelAccessPolicy;
 import net.njw.aftertheend.city.altar.AltarManager;
 import net.njw.aftertheend.city.altar.AltarPlacement;
 import net.njw.aftertheend.city.altar.AltarTravelAccess;
@@ -23,11 +24,30 @@ public final class CityTeleportGate {
         }
         MinecraftServer server = player.level().getServer();
         City city = CityManager.getCity(server, payload.cityId());
-        if (city != null && CityManager.isCityAccessible(server, payload.cityId()) && !isInsideActivatedAltar(player)) {
+        if (city != null && CityManager.isCityAccessible(server, payload.cityId())
+                && !canTravelWithoutActivatedAltar(server, player, payload.cityId())
+                && !isInsideActivatedAltar(player)) {
             player.sendOverlayMessage(Component.translatable("message.njw_after_the_end.city_move.requires_activated_altar"));
             return;
         }
         CityTeleportService.handleRequest(payload, context);
+    }
+
+    private static boolean canTravelWithoutActivatedAltar(MinecraftServer server, ServerPlayer player, java.util.UUID targetCityId) {
+        City currentCity = CityManager.findAccessibleCityContaining(
+                server, Level.OVERWORLD, player.getBlockX(), player.getBlockZ()
+        );
+        if (currentCity == null) return false;
+
+        int currentIndex = -1;
+        int targetIndex = -1;
+        int index = 0;
+        for (City city : CityManager.getCities(server)) {
+            if (city.id().equals(currentCity.id())) currentIndex = index;
+            if (city.id().equals(targetCityId)) targetIndex = index;
+            index++;
+        }
+        return CityTravelAccessPolicy.canTravelWithoutActivatedAltar(currentIndex, targetIndex);
     }
 
     private static boolean isInsideActivatedAltar(ServerPlayer player) {
