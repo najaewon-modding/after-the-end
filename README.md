@@ -11,7 +11,7 @@ Season 0에서는 도시 해금과 Altar 탐험을 중심으로 새로운 지역
 - **Java:** 25
 - **Mod Name:** After the End
 - **Mod ID:** `njw_after_the_end`
-- **Version:** `1.0.0-mc26.1.2`
+- **Version:** `1.0.0-beta.1-mc26.1.2`
 - **필수 모드:** `Just Dragon Eggs`
 
 ## Season 0 핵심 구조

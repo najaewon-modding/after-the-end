@@ -6,7 +6,7 @@ version="${mod_version}"
 displayName="${mod_name}"
 authors="najaewon"
 description='''
-A post-End progression mod that expands Minecraft with unlockable cities, specialized villagers, player profiles, and private building spaces.
+A post-End progression mod centered on unlockable cities, Altar exploration and activation, city travel, and exploration rewards.
 '''
 
 [[dependencies.${mod_id}]]

@@ -43,6 +43,7 @@ public final class ModGameTests {
     private static final long RITUAL_CHECK_DELAY_TICKS = 205L;
     private static final int TEST_Y = 197;
     private static final int TEST_DRAGON_NUMBER = 999;
+    private static boolean cityStateTestRunning;
 
     private static final DeferredRegister<Consumer<GameTestHelper>> TEST_FUNCTIONS =
             DeferredRegister.create(BuiltInRegistries.TEST_FUNCTION, AfterTheEnd.MODID);
@@ -99,6 +100,7 @@ public final class ModGameTests {
     }
 
     private static void simultaneousFirstAltarRitualsUnlockOnce(GameTestHelper helper) {
+        if (!beginCityStateTest(helper, ModGameTests::simultaneousFirstAltarRitualsUnlockOnce)) return;
         ServerLevel level = helper.getLevel();
         MinecraftServer server = level.getServer();
         int oldMax = CityManager.getMaxCityCount(server);
@@ -107,6 +109,7 @@ public final class ModGameTests {
         City target = CityManager.getLockedCities(server).stream().findFirst().orElse(null);
         if (target == null) {
             cleanupTestCity(server, testCity);
+            endCityStateTest();
             helper.fail("No locked city exists for first-ritual unlock test.");
             return;
         }
@@ -135,11 +138,13 @@ public final class ModGameTests {
                 cleanupCity(server, targetId);
                 cleanupTestCity(server, testCity);
                 restoreMaxCityCount(server, oldMax);
+                endCityStateTest();
             }
         });
     }
 
     private static void secondAndThirdAltarRitualsDoNotUnlockCity(GameTestHelper helper) {
+        if (!beginCityStateTest(helper, ModGameTests::secondAndThirdAltarRitualsDoNotUnlockCity)) return;
         ServerLevel level = helper.getLevel();
         MinecraftServer server = level.getServer();
         int oldMax = CityManager.getMaxCityCount(server);
@@ -164,11 +169,13 @@ public final class ModGameTests {
             } finally {
                 cleanupTestCity(server, testCity);
                 restoreMaxCityCount(server, oldMax);
+                endCityStateTest();
             }
         });
     }
 
     private static void maxCityCountRejectsFirstRitual(GameTestHelper helper) {
+        if (!beginCityStateTest(helper, ModGameTests::maxCityCountRejectsFirstRitual)) return;
         ServerLevel level = helper.getLevel();
         MinecraftServer server = level.getServer();
         int oldMax = CityManager.getMaxCityCount(server);
@@ -187,6 +194,7 @@ public final class ModGameTests {
             if (level.getBlockState(socket).getValue(ResonanceCrystalBlock.CALMED)) {
                 cleanupTestCity(server, testCity);
                 restoreMaxCityCount(server, oldMax);
+                endCityStateTest();
                 helper.fail("Resonance Crystal calmed even though the maximum city count was reached.");
                 return;
             }
@@ -214,6 +222,7 @@ public final class ModGameTests {
                 cleanupTestCity(server, testCity);
                 restoreMaxCityCount(server, oldMax);
                 player.discard();
+                endCityStateTest();
             }
         });
     }
@@ -261,6 +270,19 @@ public final class ModGameTests {
                 player.discard();
             }
         });
+    }
+
+    private static boolean beginCityStateTest(GameTestHelper helper, Consumer<GameTestHelper> retry) {
+        if (cityStateTestRunning) {
+            helper.runAfterDelay(1L, () -> retry.accept(helper));
+            return false;
+        }
+        cityStateTestRunning = true;
+        return true;
+    }
+
+    private static void endCityStateTest() {
+        cityStateTestRunning = false;
     }
 
     private static TestCity createTestCity(MinecraftServer server, BlockPos firstOrigin, int altarCount, int preactivatedCount) {

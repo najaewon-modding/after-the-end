@@ -1,7 +1,7 @@
 {
   "environment": "minecraft:default",
   "structure": "njw_after_the_end:altar/altar_small_01",
-  "max_ticks": 240,
+  "max_ticks": 700,
   "setup_ticks": 260,
   "required": true,
   "rotation": "none",
