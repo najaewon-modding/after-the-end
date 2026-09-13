@@ -93,7 +93,7 @@ public final class AltarRitualHandler {
                 AltarSite site = new AltarSite(city.id(), placement, geometry(placement), key(city.id(), placement));
                 boolean canPrepare = canPrepareAltar(server, city.id(), site.key());
                 updateCrystalCalmState(level, site.geometry(), canPrepare);
-                if (canPrepare && hasRitualPattern(level, site.geometry())) tryStartRitual(server, level, site);
+                if (canPrepare && hasRitualPattern(level, site.geometry())) tryStartRitual(server, level, site, null);
             }
         }
     }
@@ -130,7 +130,9 @@ public final class AltarRitualHandler {
 
         if (!canPrepare) {
             PENDING_RITUALS.remove(site.key());
-            if (player != null && hasRitualPattern(level, site.geometry())) rejectRecordedEgg(level, site, player);
+            if (player != null && hasRitualPattern(level, site.geometry())) rejectRecordedEgg(
+                    level, site, player, Component.translatable("message.njw_after_the_end.altar.cannot_activate")
+            );
             return;
         }
 
@@ -142,7 +144,7 @@ public final class AltarRitualHandler {
         level.playSound(null, pos, SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.BLOCKS, 1.15F, pitch);
         level.sendParticles(new DustParticleOptions(SOCKET_COLOR, 0.95F), pos.getX() + 0.5, pos.getY() + 0.6,
                 pos.getZ() + 0.5, 14, 0.3, 0.4, 0.3, 0.025);
-        if (hasRitualPattern(level, site.geometry())) tryStartRitual(server, level, site);
+        if (hasRitualPattern(level, site.geometry())) tryStartRitual(server, level, site, player);
     }
 
     private static void handleRecordedDragonEggPlaced(ServerLevel level, BlockPos pos, Player player) {
@@ -151,19 +153,21 @@ public final class AltarRitualHandler {
         if (site == null || !hasCrystalPattern(level, site.geometry())) return;
         if (!canPrepareAltar(server, site.cityId(), site.key())) {
             PENDING_RITUALS.remove(site.key());
-            if (player != null) rejectRecordedEgg(level, site, player);
+            if (player != null) rejectRecordedEgg(
+                    level, site, player, Component.translatable("message.njw_after_the_end.altar.cannot_activate")
+            );
             return;
         }
-        tryStartRitual(server, level, site);
+        tryStartRitual(server, level, site, player);
     }
 
-    private static void rejectRecordedEgg(ServerLevel level, AltarSite site, Player player) {
-        BlockState eggState = level.getBlockState(site.geometry().center());
+    private static void rejectRecordedEgg(ServerLevel level, AltarSite site, Player player, Component message) {
+        BlockPos eggPos = site.geometry().center();
+        BlockState eggState = level.getBlockState(eggPos);
         if (!(eggState.getBlock() instanceof RecordedDragonEggBlock)) return;
-        eggState.attack(level, site.geometry().center(), player);
-        if (player instanceof ServerPlayer serverPlayer) {
-            serverPlayer.sendOverlayMessage(Component.translatable("message.njw_after_the_end.altar.cannot_activate"));
-        }
+        eggState.attack(level, eggPos, player);
+        level.playSound(null, eggPos, SoundEvents.ENDERMAN_TELEPORT, SoundSource.BLOCKS, 1.0F, 1.0F);
+        if (player instanceof ServerPlayer serverPlayer) serverPlayer.sendOverlayMessage(message);
     }
 
     static boolean canActivate(int activatedCount, int unlockedCityCount, int maxCityCount) {
@@ -176,6 +180,10 @@ public final class AltarRitualHandler {
         return AltarActivationPolicy.unlocksCity(
                 activatedCount, MAX_ACTIVATED_ALTARS_PER_CITY, unlockedCityCount, maxCityCount
         );
+    }
+
+    static boolean isDragonEggRankSufficient(int dragonNumber, int requiredDragonNumber) {
+        return dragonNumber >= requiredDragonNumber;
     }
 
     private static boolean canActivateAltar(MinecraftServer server, UUID cityId) {
@@ -201,7 +209,23 @@ public final class AltarRitualHandler {
         return count;
     }
 
-    private static void tryStartRitual(MinecraftServer server, ServerLevel level, AltarSite site) {
+    private static int requiredDragonNumber(MinecraftServer server, UUID cityId) {
+        int cityNumber = 1;
+        for (City city : CityManager.getCities(server)) {
+            if (city.id().equals(cityId)) return cityNumber;
+            cityNumber++;
+        }
+        return Integer.MAX_VALUE;
+    }
+
+    private static int recordedDragonNumber(ServerLevel level, BlockPos pos) {
+        if (level.getBlockEntity(pos) instanceof RecordedDragonEggBlockEntity egg && egg.record() != null) {
+            return egg.record().dragonNumber();
+        }
+        return 0;
+    }
+
+    private static void tryStartRitual(MinecraftServer server, ServerLevel level, AltarSite site, Player player) {
         AltarKey key = site.key();
         if (ACTIVE_SEQUENCES.containsKey(key) || site.placement().activated() || !hasRitualPattern(level, site.geometry())) {
             PENDING_RITUALS.remove(key);
@@ -210,6 +234,18 @@ public final class AltarRitualHandler {
         if (!canPrepareAltar(server, site.cityId(), key)) {
             PENDING_RITUALS.remove(key);
             updateCrystalCalmState(level, site.geometry(), false);
+            return;
+        }
+
+        int requiredDragonNumber = requiredDragonNumber(server, site.cityId());
+        int dragonNumber = recordedDragonNumber(level, site.geometry().center());
+        if (!isDragonEggRankSufficient(dragonNumber, requiredDragonNumber)) {
+            PENDING_RITUALS.remove(key);
+            if (player != null) {
+                rejectRecordedEgg(level, site, player, Component.translatable(
+                        "message.njw_after_the_end.altar.dragon_egg_rank_too_low", requiredDragonNumber
+                ));
+            }
             return;
         }
 
@@ -245,7 +281,8 @@ public final class AltarRitualHandler {
         level.sendParticles(ParticleTypes.PORTAL, geometry.center().getX() + 0.5, geometry.center().getY() + 0.8,
                 geometry.center().getZ() + 0.5, 48, 2.0, 1.0, 2.0, 0.04);
         broadcastEffect(level, sequence, false);
-        AfterTheEnd.LOGGER.debug("Started Altar ritual: city={}, altar={}", site.cityId(), key);
+        AfterTheEnd.LOGGER.debug("Started Altar ritual: city={}, altar={}, dragonNumber={}, requiredDragonNumber={}",
+                site.cityId(), key, dragonNumber, requiredDragonNumber);
     }
 
     private static void tryStartPending(MinecraftServer server, ServerLevel level) {
@@ -256,7 +293,7 @@ public final class AltarRitualHandler {
                 PENDING_RITUALS.remove(key);
                 continue;
             }
-            tryStartRitual(server, level, site);
+            tryStartRitual(server, level, site, null);
         }
     }
 
