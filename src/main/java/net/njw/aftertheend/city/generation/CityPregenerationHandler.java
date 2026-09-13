@@ -1,6 +1,7 @@
 package net.njw.aftertheend.city.generation;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,10 +22,9 @@ import net.njw.aftertheend.city.CityRegion;
 import net.njw.aftertheend.city.CitySavedData;
 
 public final class CityPregenerationHandler {
-    private static final int WARMUP_RADIUS_CHUNKS = 16;
-    private static final int LOG_INTERVAL_CHUNKS = 100;
     private static final int SAVE_INTERVAL_CHUNKS = 100;
     private static final long TIME_BUDGET_NANOS = 5_000_000L;
+    private static final long PROGRESS_LOG_INTERVAL_NANOS = 10_000_000_000L;
     private static final int MAX_CHUNKS_PER_TICK = 4;
     private static final Component LOAD_KICK_MESSAGE = Component.translatable("message.njw_after_the_end.city_load.in_progress");
 
@@ -34,6 +34,9 @@ public final class CityPregenerationHandler {
     private static boolean active;
     private static volatile boolean maintenanceActive;
     private static UUID activeCityId;
+    private static boolean allCitiesLoad;
+    private static int selectedCityCount;
+    private static long lastProgressLogNanos;
 
     private CityPregenerationHandler() { }
 
@@ -43,19 +46,34 @@ public final class CityPregenerationHandler {
     }
 
     public static int startCityLoad(MinecraftServer server, City city) {
-        if (active) throw new IllegalStateException("City chunk loading is already active for: " + activeCityId);
+        return startLoad(server, List.of(city), city.id(), false);
+    }
+
+    public static int startAllCityLoads(MinecraftServer server, Collection<City> cities) {
+        return startLoad(server, List.copyOf(cities), null, true);
+    }
+
+    private static int startLoad(MinecraftServer server, List<City> cities, UUID cityId, boolean allCities) {
+        if (active) throw new IllegalStateException("City chunk loading is already active: " + activeLoadDescription());
         tasks.clear();
         currentTaskIndex = 0;
         savedData = server.getDataStorage().computeIfAbsent(CitySavedData.TYPE);
-        registerCityTasks(server, city);
+        for (City city : cities) registerCityTasks(server, city);
         if (tasks.isEmpty()) {
             savedData = null;
             return 0;
         }
-        activeCityId = city.id();
+        activeCityId = cityId;
+        allCitiesLoad = allCities;
+        selectedCityCount = cities.size();
         maintenanceActive = true;
         active = true;
-        AfterTheEnd.LOGGER.info("City chunk loading scheduled: city={}, tasks={}. Player connections are temporarily disabled.", city.id(), tasks.size());
+        lastProgressLogNanos = System.nanoTime();
+        AfterTheEnd.LOGGER.info(
+                "City chunk loading scheduled: scope={}, cities={}, tasks={}, progress={}/{} ({}%). Player connections are temporarily disabled.",
+                activeLoadDescription(), selectedCityCount, tasks.size(), getGeneratedChunks(), getTotalChunks(),
+                percentage(getGeneratedChunks(), getTotalChunks())
+        );
         return tasks.size();
     }
 
@@ -71,13 +89,19 @@ public final class CityPregenerationHandler {
 
     private static void registerTaskIfNeeded(MinecraftServer server, City city, ResourceKey<Level> dimension) {
         CityRegion region = city.getRegion(dimension).orElse(null);
-        if (region == null || savedData.isPregenerationCompleted(city.id(), dimension)) return;
+        if (region == null) return;
         ServerLevel level = server.getLevel(dimension);
         if (level == null) return;
-        int diameter = WARMUP_RADIUS_CHUNKS * 2 + 1;
-        CityRegion warmupRegion = new CityRegion(region.centerChunkX(), region.centerChunkZ(), diameter, diameter);
-        long alreadyGenerated = savedData.getPregeneratedChunks(city.id(), dimension);
-        tasks.add(new PregenerationTask(city.id(), dimension, new CityPregenerator(level, warmupRegion, 0, alreadyGenerated)));
+        long savedProgress = savedData.getPregeneratedChunks(city.id(), dimension);
+        CityPregenerator pregenerator = new CityPregenerator(level, region, 0, savedProgress);
+        if (savedProgress != pregenerator.getGeneratedChunks()) {
+            savedData.setPregeneratedChunks(city.id(), dimension, pregenerator.getGeneratedChunks());
+        }
+        if (pregenerator.isFinished()) {
+            savedData.markPregenerationCompleted(city.id(), dimension);
+            return;
+        }
+        tasks.add(new PregenerationTask(city.id(), dimension, pregenerator));
     }
 
     @SubscribeEvent
@@ -110,8 +134,10 @@ public final class CityPregenerationHandler {
                 generated++;
                 long progress = pregenerator.getGeneratedChunks();
                 if (progress % SAVE_INTERVAL_CHUNKS == 0) saveTaskProgress(task);
-                if (progress > 0 && progress % LOG_INTERVAL_CHUNKS == 0) {
-                    AfterTheEnd.LOGGER.info("City load: city={}, dimension={}, progress={}/{}", task.cityId(), task.dimension().identifier(), progress, pregenerator.getTotalChunks());
+                long now = System.nanoTime();
+                if (now - lastProgressLogNanos >= PROGRESS_LOG_INTERVAL_NANOS) {
+                    logProgress(task);
+                    lastProgressLogNanos = now;
                 }
                 if (pregenerator.isFinished()) {
                     completeTask(task);
@@ -120,20 +146,41 @@ public final class CityPregenerationHandler {
             }
         } catch (RuntimeException exception) {
             saveRemainingProgress();
-            AfterTheEnd.LOGGER.error("City chunk loading failed: city={}. Player connections are enabled again.", activeCityId, exception);
+            String scope = activeLoadDescription();
+            AfterTheEnd.LOGGER.error("City chunk loading failed: scope={}. Player connections are enabled again.", scope, exception);
             resetRuntimeState();
             return;
         }
 
         if (currentTaskIndex >= tasks.size()) {
-            UUID completedCityId = activeCityId;
+            String scope = activeLoadDescription();
+            long generatedChunks = getGeneratedChunks();
+            long totalChunks = getTotalChunks();
+            int cityCount = selectedCityCount;
+            int taskCount = tasks.size();
             resetRuntimeState();
-            AfterTheEnd.LOGGER.info("City chunk loading completed: city={}. Player connections are enabled again.", completedCityId);
+            AfterTheEnd.LOGGER.info(
+                    "City chunk loading completed: scope={}, cities={}, tasks={}, progress={}/{} (100.0%). Player connections are enabled again.",
+                    scope, cityCount, taskCount, generatedChunks, totalChunks
+            );
         }
     }
 
     private static void disconnectAllPlayers(MinecraftServer server) {
         for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) player.connection.disconnect(LOAD_KICK_MESSAGE);
+    }
+
+    private static void logProgress(PregenerationTask task) {
+        long taskGenerated = task.pregenerator().getGeneratedChunks();
+        long taskTotal = task.pregenerator().getTotalChunks();
+        long overallGenerated = getGeneratedChunks();
+        long overallTotal = getTotalChunks();
+        AfterTheEnd.LOGGER.info(
+                "City load progress: task={}/{}, city={}, dimension={}, taskProgress={}/{} ({}%), overall={}/{} ({}%)",
+                currentTaskIndex + 1, tasks.size(), task.cityId(), task.dimension().identifier(),
+                taskGenerated, taskTotal, percentage(taskGenerated, taskTotal),
+                overallGenerated, overallTotal, percentage(overallGenerated, overallTotal)
+        );
     }
 
     private static void saveTaskProgress(PregenerationTask task) {
@@ -151,12 +198,44 @@ public final class CityPregenerationHandler {
     private static void completeTask(PregenerationTask task) {
         saveTaskProgress(task);
         savedData.markPregenerationCompleted(task.cityId(), task.dimension());
-        AfterTheEnd.LOGGER.info("City load completed: city={}, dimension={} ({}/{})", task.cityId(), task.dimension().identifier(), task.pregenerator().getGeneratedChunks(), task.pregenerator().getTotalChunks());
+        AfterTheEnd.LOGGER.info(
+                "City load task completed: task={}/{}, city={}, dimension={}, progress={}/{}; overall={}/{} ({}%)",
+                currentTaskIndex + 1, tasks.size(), task.cityId(), task.dimension().identifier(),
+                task.pregenerator().getGeneratedChunks(), task.pregenerator().getTotalChunks(),
+                getGeneratedChunks(), getTotalChunks(), percentage(getGeneratedChunks(), getTotalChunks())
+        );
+    }
+
+    private static long getGeneratedChunks() {
+        long generated = 0L;
+        for (PregenerationTask task : tasks) generated += task.pregenerator().getGeneratedChunks();
+        return generated;
+    }
+
+    private static long getTotalChunks() {
+        long total = 0L;
+        for (PregenerationTask task : tasks) total += task.pregenerator().getTotalChunks();
+        return total;
+    }
+
+    private static double percentage(long generated, long total) {
+        if (total <= 0L) return 100.0D;
+        return Math.round(generated * 1000.0D / total) / 10.0D;
+    }
+
+    private static String activeLoadDescription() {
+        return allCitiesLoad ? "all-cities" : "city=" + activeCityId;
     }
 
     public static void removeCity(UUID cityId) {
-        if (!cityId.equals(activeCityId)) return;
-        AfterTheEnd.LOGGER.warn("Active city chunk loading canceled because city {} was removed. Player connections are enabled again.", cityId);
+        if (!active) return;
+        boolean included = cityId.equals(activeCityId)
+                || allCitiesLoad && tasks.stream().anyMatch(task -> task.cityId().equals(cityId));
+        if (!included) return;
+        saveRemainingProgress();
+        AfterTheEnd.LOGGER.warn(
+                "Active city chunk loading canceled because city {} was removed. Player connections are enabled again.", cityId
+        );
         resetRuntimeState();
     }
 
@@ -173,6 +252,9 @@ public final class CityPregenerationHandler {
         active = false;
         maintenanceActive = false;
         activeCityId = null;
+        allCitiesLoad = false;
+        selectedCityCount = 0;
+        lastProgressLogNanos = 0L;
     }
 
     private record PregenerationTask(UUID cityId, ResourceKey<Level> dimension, CityPregenerator pregenerator) { }

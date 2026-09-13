@@ -2,6 +2,7 @@ package net.njw.aftertheend.city.command;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import java.util.List;
 import java.util.UUID;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -36,6 +37,8 @@ public final class CityAdminCommand {
                                 .then(Commands.argument("cityId", StringArgumentType.word())
                                         .executes(context -> deleteCity(context.getSource(), StringArgumentType.getString(context, "cityId")))))
                         .then(Commands.literal("load")
+                                .then(Commands.literal("all")
+                                        .executes(context -> loadAllCities(context.getSource())))
                                 .then(Commands.argument("cityId", StringArgumentType.word())
                                         .executes(context -> loadCity(context.getSource(), StringArgumentType.getString(context, "cityId")))))
                         .then(Commands.literal("list").executes(context -> listCities(context.getSource())))
@@ -111,6 +114,28 @@ public final class CityAdminCommand {
         } catch (RuntimeException exception) {
             AfterTheEnd.LOGGER.warn("Failed to load city chunks for {} from admin command.", cityId, exception);
             source.sendFailure(Component.translatable("command.njw_after_the_end.city.failed_load", cityId));
+            return 0;
+        }
+    }
+
+    private static int loadAllCities(CommandSourceStack source) {
+        MinecraftServer server = source.getServer();
+        List<City> cities = List.copyOf(CityManager.getCities(server));
+        try {
+            int taskCount = CityPregenerationHandler.startAllCityLoads(server, cities);
+            if (taskCount == 0) {
+                source.sendSuccess(() -> Component.translatable(
+                        "command.njw_after_the_end.city.all_chunks_already_loaded", cities.size()
+                ), false);
+                return 1;
+            }
+            source.sendSuccess(() -> Component.translatable(
+                    "command.njw_after_the_end.city.all_chunk_loading_started", cities.size(), taskCount
+            ), true);
+            return 1;
+        } catch (RuntimeException exception) {
+            AfterTheEnd.LOGGER.warn("Failed to load chunks for all cities from admin command.", exception);
+            source.sendFailure(Component.translatable("command.njw_after_the_end.city.failed_load_all"));
             return 0;
         }
     }

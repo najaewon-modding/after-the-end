@@ -84,6 +84,9 @@ jobs:
           fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" \
+              -f sha="$GITHUB_SHA" \
+              -F force=true >/dev/null
             gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES"
             gh release upload "$TAG" "$ASSET" --clobber
           else
