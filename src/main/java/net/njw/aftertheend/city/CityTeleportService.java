@@ -204,7 +204,8 @@ public final class CityTeleportService {
                 cancelCast(player, "message.njw_after_the_end.city_move.interrupted_monsters");
                 continue;
             }
-            spawnCityMoveEffect(player, session);
+            CityMoveRecallEffect.tick(player, session.ticks,
+                    progress(System.nanoTime(), session.startedAtNanos, CAST_DURATION_NANOS));
 
             long remainingBudget = searchDeadline - System.nanoTime();
             if (remainingBudget > 0L && !session.search.isComplete()) session.search.advance(Math.min(fairShare, remainingBudget));
