@@ -2,6 +2,7 @@
   "key.category.njw_after_the_end.city": "After the End",
   "key.njw_after_the_end.open_city_list": "Open City List",
   "key.njw_after_the_end.set_arrival_altar": "Set Arrival Altar",
+  "config.njw_after_the_end.give_guide_book_on_join": "Give Guide Book on Join",
 
   "item.njw_after_the_end.shulker_core": "Shulker Core",
   "item.njw_after_the_end.replication_pill": "Replication Pill",
@@ -85,7 +86,7 @@
   "command.njw_after_the_end.city.failed_delete": "Failed to delete city %s. Check the server log for details.",
   "command.njw_after_the_end.city.chunks_already_loaded": "City chunks are already loaded: %s",
   "command.njw_after_the_end.city.chunk_loading_started": "Started city chunk loading: %s. All players will be disconnected until loading finishes.",
-  "command.njw_after_the_end.city.failed_load": "Failed to start chunk loading for city %s. Check the server log for details.",
+  "command.njw_after_the_end.city.failed_load": "Failed to start city chunk loading: %s. Check the server log for details.",
   "command.njw_after_the_end.city.count": "Cities: %s",
   "command.njw_after_the_end.city.summary": "Cities: %s (unlocked %s/%s, locked reserve %s/%s)",
   "command.njw_after_the_end.city.list_entry": "- %s (%s)",
