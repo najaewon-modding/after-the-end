@@ -7,6 +7,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
 import net.njw.aftertheend.city.CityBoundaryHandler;
 import net.njw.aftertheend.city.CityInteractionHandler;
+import net.njw.aftertheend.city.CityMoveRecallEffect;
 import net.njw.aftertheend.city.CityTeleportService;
 import net.njw.aftertheend.city.altar.AltarCommand;
 import net.njw.aftertheend.city.altar.AltarGenerationHandler;
@@ -44,6 +45,7 @@ public final class AfterTheEnd {
         NeoForge.EVENT_BUS.register(CityAdminCommand.class);
         NeoForge.EVENT_BUS.register(CitySyncService.class);
         NeoForge.EVENT_BUS.register(CityTeleportService.class);
+        NeoForge.EVENT_BUS.register(CityMoveRecallEffect.class);
         NeoForge.EVENT_BUS.register(ShulkerCoreDropHandler.class);
     }
 }
