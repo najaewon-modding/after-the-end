@@ -4,6 +4,13 @@
   "key.njw_after_the_end.set_arrival_altar": "Set Arrival Altar",
 
   "item.njw_after_the_end.shulker_core": "Shulker Core",
+  "item.njw_after_the_end.replication_pill": "Replication Pill",
+  "item.njw_after_the_end.sorting_pill": "Sorting Pill",
+  "item.njw_after_the_end.smelting_pill": "Smelting Pill",
+  "item.njw_after_the_end.supply_pill": "Supply Pill",
+  "item.njw_after_the_end.concoction_pill": "Concoction Pill",
+  "item.njw_after_the_end.logistics_pill": "Logistics Pill",
+  "item.njw_after_the_end.switching_pill": "Switching Pill",
   "block.njw_after_the_end.resonance_crystal": "Resonance Crystal",
 
   "gui.njw_after_the_end.city_list.title": "City List",
