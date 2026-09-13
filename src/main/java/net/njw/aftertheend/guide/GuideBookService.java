@@ -18,14 +18,14 @@ public final class GuideBookService {
     private static final String KOREAN_TITLE = "After the End 안내서";
     private static final String[] ENGLISH_PAGES = {
             "After the End\n\nExpand your world\nbeyond the Ender\nDragon by unlocking\nnew cities.\n\nThis book covers\nthe core beta\nprogression only.",
-            "1. Cities & Borders\n\nAt first, only the\nstarting city is\naccessible.\n\nLocked areas limit\nplacing, breaking,\ninteraction, and\nitem pickup.\n\nIf you stay outside,\nyou return to a\nsafe location.",
-            "2. Progression\n\nKill Ender Dragon\n↓\nExplore the End\n↓\nDefeat Shulkers\n↓\nCraft Resonance\nCrystals\n↓\nFind & activate\nan Altar\n↓\nUnlock next city",
+            "1. Cities & Borders\n\nAt first, only the\nstarting city is\naccessible.\n\nLocked areas limit\nplacing, breaking,\ninteraction, and\nitem pickup.\nIf you stay outside,\nyou return to a\nsafe location.",
+            "2. Progression\nKill Ender Dragon\n↓\nExplore the End\n↓\nDefeat Shulkers\n↓\nCraft Resonance\nCrystals\n↓\nFind & activate Altar\n↓\nUnlock next city",
             "3. Recorded Egg\n\nPlace a Recorded\nDragon Egg from\nJust Dragon Eggs\nat the Altar center.\n\nIts Dragon number\nmust be at least\nthe city's order.\n\nThe egg is returned\nafter the ritual.",
             "4. Resonance\nCrystal\n\nRecipe:\nGlass ×7\nEye of Ender ×1\nShulker Core ×1\n\nShulker Cores drop\nfrom Shulkers.\n\nEach Altar needs\n4 Crystals.",
             "5. Altar Ritual\n\nPlace 4 Resonance\nCrystals in the\nfour sockets.\n\nPlace a Recorded\nDragon Egg in the\ncenter.\n\nThe first Altar\nactivation in a city\nunlocks the next city.",
             "6. Hidden Rewards\n\nEvery Altar hides\none reward chest.\n\nIt holds loot from\nall dimensions,\ntreasure, and always\none villager upgrade\npill.\n\nYou can find it\nbefore activation.",
             "7. City Travel\n\nPress C to open the\nCity List.\n\nTravel between\nunlocked cities in\nthe Overworld.\n\nSome travel requires\nan activated Altar.\nMoving or taking\ndamage can cancel it.",
-            "8. Guide Book\n\nAutomatic guide book\ndelivery can be\nchanged in:\n\nMods\n→ After the End\n→ Config\n→ Give Guide Book\n   on Join\n\nTurn it off to stop\nfuture deliveries."
+            "8. Guide Book\n\nAutomatic guide book\ndelivery can be\nchanged in:\nMods\n→ After the End\n→ Config\n→ Give Guide Book\n   on Join\n\nTurn it off to stop\nfuture deliveries."
     };
     private static final String[] KOREAN_PAGES = {
             "After the End\n\n엔더 드래곤 이후,\n새로운 도시를 열며\n세계를 확장합니다.\n\n이 책에는 베타의\n핵심 진행 방법만\n정리되어 있습니다.",
