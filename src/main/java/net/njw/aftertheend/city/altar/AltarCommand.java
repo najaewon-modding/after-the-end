@@ -19,47 +19,8 @@ public final class AltarCommand {
         event.getDispatcher().register(
                 Commands.literal("altar")
                         .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
-                        .then(Commands.literal("locate").executes(context -> locateNearest(context.getSource())))
                         .then(Commands.literal("list").executes(context -> listCurrentCity(context.getSource())))
         );
-    }
-
-    private static int locateNearest(CommandSourceStack source) {
-        double sourceX = source.getPosition().x();
-        double sourceZ = source.getPosition().z();
-        AltarPlacement nearest = null;
-        double nearestDistanceSquared = Double.POSITIVE_INFINITY;
-
-        for (City city : CityManager.getCities(source.getServer())) {
-            for (AltarPlacement placement : AltarManager.getPlacements(source.getServer(), city.id())) {
-                int half = placement.large() ? 13 : 5;
-                double centerX = placement.blockX() + half;
-                double centerZ = placement.blockZ() + half;
-                double dx = centerX - sourceX;
-                double dz = centerZ - sourceZ;
-                double distanceSquared = dx * dx + dz * dz;
-                if (distanceSquared < nearestDistanceSquared) {
-                    nearestDistanceSquared = distanceSquared;
-                    nearest = placement;
-                }
-            }
-        }
-
-        if (nearest == null) {
-            source.sendFailure(Component.translatable("command.njw_after_the_end.altar.no_generated"));
-            return 0;
-        }
-
-        int half = nearest.large() ? 13 : 5;
-        int x = nearest.blockX() + half;
-        int y = nearest.y() + 2;
-        int z = nearest.blockZ() + half;
-        long distance = Math.round(Math.sqrt(nearestDistanceSquared));
-        Component coordinates = coordinates(x, y, z, false);
-        source.sendSuccess(() -> Component.translatable(
-                "command.njw_after_the_end.altar.nearest", coordinates, distance
-        ), false);
-        return 1;
     }
 
     private static int listCurrentCity(CommandSourceStack source) {
@@ -101,7 +62,7 @@ public final class AltarCommand {
             Component state = Component.translatable(placement.ruined()
                     ? "command.njw_after_the_end.altar.state.ruined"
                     : "command.njw_after_the_end.altar.state.normal");
-            Component coordinates = coordinates(x, y, z, true);
+            Component coordinates = coordinates(x, y, z);
             Component line = Component.translatable(
                     "command.njw_after_the_end.altar.list_entry", index + 1, type, color, state, coordinates
             );
@@ -110,11 +71,9 @@ public final class AltarCommand {
         return placements.size();
     }
 
-    private static Component coordinates(int x, int y, int z, boolean clickable) {
-        Component component = Component.literal("[" + x + ", " + y + ", " + z + "]");
-        if (!clickable) return component;
+    private static Component coordinates(int x, int y, int z) {
         String tpCommand = "/tp " + x + " " + y + " " + z;
-        return component.copy().withStyle(style -> style
+        return Component.literal("[" + x + ", " + y + ", " + z + "]").withStyle(style -> style
                 .withColor(ChatFormatting.AQUA)
                 .withUnderlined(true)
                 .withClickEvent(new ClickEvent.SuggestCommand(tpCommand)));

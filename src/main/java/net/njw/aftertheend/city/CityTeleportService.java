@@ -44,7 +44,7 @@ import java.util.UUID;
 public final class CityTeleportService {
     private static final long CAST_DURATION_NANOS = 8_000_000_000L;
     private static final long ARRIVAL_CAST_DURATION_NANOS = 3_000_000_000L;
-    private static final long COOLDOWN_DURATION_NANOS = 3_000_000_000L;
+    private static final long COOLDOWN_DURATION_NANOS = 5_000_000_000L;
     private static final long GLOBAL_SEARCH_BUDGET_NANOS_PER_TICK = 5_000_000L;
     private static final double MOVEMENT_CANCEL_DISTANCE_SQUARED = 0.01D;
     private static final int BLOCKS_PER_CHUNK = 16;

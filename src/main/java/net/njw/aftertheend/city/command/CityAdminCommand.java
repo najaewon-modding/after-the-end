@@ -28,8 +28,7 @@ public final class CityAdminCommand {
                 Commands.literal("city")
                         .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                         .then(Commands.literal("create")
-                                .executes(context -> createCity(context.getSource(), true))
-                                .then(Commands.literal("locked").executes(context -> createCity(context.getSource(), false))))
+                                .executes(context -> createCity(context.getSource())))
                         .then(Commands.literal("unlock")
                                 .then(Commands.argument("cityId", StringArgumentType.word())
                                         .executes(context -> unlockCity(context.getSource(), StringArgumentType.getString(context, "cityId")))))
@@ -50,15 +49,12 @@ public final class CityAdminCommand {
         );
     }
 
-    private static int createCity(CommandSourceStack source, boolean accessible) {
+    private static int createCity(CommandSourceStack source) {
         try {
-            City city = accessible
-                    ? CityLifecycleService.createAccessibleCity(source.getServer())
-                    : CityLifecycleService.createLockedCity(source.getServer());
-            String key = accessible
-                    ? "command.njw_after_the_end.city.created_accessible"
-                    : "command.njw_after_the_end.city.created_locked";
-            source.sendSuccess(() -> Component.translatable(key, city.id().toString()), false);
+            City city = CityLifecycleService.createAccessibleCity(source.getServer());
+            source.sendSuccess(() -> Component.translatable(
+                    "command.njw_after_the_end.city.created_accessible", city.id().toString()
+            ), false);
             sendCityCoordinates(source, city);
             return 1;
         } catch (RuntimeException exception) {
