@@ -43,10 +43,10 @@ public final class CitySavedData extends SavedData {
         return result;
     }, map -> new ArrayList<>(map.values()));
     private static final Codec<Set<UUID>> ACCESSIBLE_CITY_IDS_CODEC = UUID_CODEC.listOf().xmap(LinkedHashSet::new, set -> new ArrayList<>(set));
-    private static final Codec<CityArrivalPosition> CITY_ARRIVAL_POSITION_CODEC = RecordCodecBuilder.create(instance -> instance.group(
-            Codec.INT.fieldOf("blockX").forGetter(CityArrivalPosition::blockX), Codec.INT.fieldOf("y").forGetter(CityArrivalPosition::y), Codec.INT.fieldOf("blockZ").forGetter(CityArrivalPosition::blockZ)
-    ).apply(instance, CityArrivalPosition::new));
-    private static final Codec<Map<String, CityArrivalPosition>> CITY_ARRIVAL_POSITIONS_CODEC = Codec.unboundedMap(Codec.STRING, CITY_ARRIVAL_POSITION_CODEC);
+    private static final Codec<CityArrivalAltar> CITY_ARRIVAL_ALTAR_CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.INT.fieldOf("blockX").forGetter(CityArrivalAltar::blockX), Codec.INT.fieldOf("y").forGetter(CityArrivalAltar::y), Codec.INT.fieldOf("blockZ").forGetter(CityArrivalAltar::blockZ)
+    ).apply(instance, CityArrivalAltar::new));
+    private static final Codec<Map<String, CityArrivalAltar>> CITY_ARRIVAL_ALTARS_CODEC = Codec.unboundedMap(Codec.STRING, CITY_ARRIVAL_ALTAR_CODEC);
     private static final Codec<PregenerationState> PREGENERATION_STATE_CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.LONG.optionalFieldOf("generatedChunks", 0L).forGetter(PregenerationState::generatedChunks), Codec.BOOL.optionalFieldOf("completed", false).forGetter(PregenerationState::completed)
     ).apply(instance, PregenerationState::new));
@@ -62,7 +62,7 @@ public final class CitySavedData extends SavedData {
                     PREGENERATION_STATES_CODEC.optionalFieldOf("pregenerationStates", Map.of()).forGetter(CitySavedData::serializePregenerationStates),
                     CITIES_CODEC.optionalFieldOf("cities", Map.of()).forGetter(data -> data.cities),
                     ACCESSIBLE_CITY_IDS_CODEC.optionalFieldOf("accessibleCityIds", Set.of()).forGetter(data -> data.accessibleCityIds),
-                    CITY_ARRIVAL_POSITIONS_CODEC.optionalFieldOf("cityArrivalPositions", Map.of()).forGetter(CitySavedData::serializeCityArrivalPositions),
+                    CITY_ARRIVAL_ALTARS_CODEC.optionalFieldOf("cityArrivalPositions", Map.of()).forGetter(CitySavedData::serializeCityArrivalAltars),
                     Codec.INT.optionalFieldOf("maxCityCount", DEFAULT_MAX_CITY_COUNT).forGetter(data -> data.maxCityCount)
             ).apply(instance, CitySavedData::new)), null);
 
@@ -72,7 +72,7 @@ public final class CitySavedData extends SavedData {
     private final Map<CityDimensionKey, PregenerationState> pregenerationStates = new HashMap<>();
     private final Map<UUID, City> cities;
     private final Set<UUID> accessibleCityIds;
-    private final Map<CityDimensionKey, CityArrivalPosition> cityArrivalPositions = new HashMap<>();
+    private final Map<CityDimensionKey, CityArrivalAltar> cityArrivalAltars = new HashMap<>();
     private int maxCityCount;
 
     public CitySavedData() {
@@ -85,7 +85,7 @@ public final class CitySavedData extends SavedData {
 
     private CitySavedData(Map<String, SafePosition> positions, Set<UUID> pendingReturns, boolean structureRequirementsInitialized,
                           Map<String, PregenerationState> pregenerationStates, Map<UUID, City> cities, Set<UUID> accessibleCityIds,
-                          Map<String, CityArrivalPosition> cityArrivalPositions, int maxCityCount) {
+                          Map<String, CityArrivalAltar> cityArrivalAltars, int maxCityCount) {
         this.pendingReturns = new LinkedHashSet<>(pendingReturns);
         this.structureRequirementsInitialized = structureRequirementsInitialized;
         this.cities = new LinkedHashMap<>(cities);
@@ -93,7 +93,7 @@ public final class CitySavedData extends SavedData {
         this.maxCityCount = maxCityCount;
         deserializePlayerPositions(positions);
         deserializePregenerationStates(pregenerationStates);
-        deserializeCityArrivalPositions(cityArrivalPositions);
+        deserializeCityArrivalAltars(cityArrivalAltars);
         normalizeCityData();
     }
 
@@ -177,17 +177,17 @@ public final class CitySavedData extends SavedData {
     public boolean areStructureRequirementsInitialized() { return structureRequirementsInitialized; }
     public void markStructureRequirementsInitialized() { if (!structureRequirementsInitialized) { structureRequirementsInitialized = true; setDirty(); } }
 
-    public CityArrivalPosition getCityArrivalPosition(UUID cityId, ResourceKey<Level> dimension) { return cityArrivalPositions.get(new CityDimensionKey(cityId, dimension)); }
-    public void setCityArrivalPosition(UUID cityId, ResourceKey<Level> dimension, int blockX, int y, int blockZ) {
+    public CityArrivalAltar getCityArrivalAltar(UUID cityId, ResourceKey<Level> dimension) { return cityArrivalAltars.get(new CityDimensionKey(cityId, dimension)); }
+    public void setCityArrivalAltar(UUID cityId, ResourceKey<Level> dimension, int blockX, int y, int blockZ) {
         City city = cities.get(cityId);
         if (city == null) throw new IllegalArgumentException("Unknown city: " + cityId);
         CityRegion region = city.getRegion(dimension).orElseThrow(() -> new IllegalArgumentException("City does not exist in dimension: " + cityId + " / " + dimension.identifier()));
-        if (!region.containsBlock(blockX, blockZ)) throw new IllegalArgumentException("Arrival position is outside city region: " + cityId);
-        CityArrivalPosition position = new CityArrivalPosition(blockX, y, blockZ);
-        if (!position.equals(cityArrivalPositions.put(new CityDimensionKey(cityId, dimension), position))) setDirty();
+        if (!region.containsBlock(blockX, blockZ)) throw new IllegalArgumentException("Arrival Altar is outside city region: " + cityId);
+        CityArrivalAltar altar = new CityArrivalAltar(blockX, y, blockZ);
+        if (!altar.equals(cityArrivalAltars.put(new CityDimensionKey(cityId, dimension), altar))) setDirty();
     }
-    public void clearCityArrivalPosition(UUID cityId, ResourceKey<Level> dimension) { if (cityArrivalPositions.remove(new CityDimensionKey(cityId, dimension)) != null) setDirty(); }
-    public void clearCityArrivalPositions(UUID cityId) { if (cityArrivalPositions.keySet().removeIf(key -> key.cityId().equals(cityId))) setDirty(); }
+    public void clearCityArrivalAltar(UUID cityId, ResourceKey<Level> dimension) { if (cityArrivalAltars.remove(new CityDimensionKey(cityId, dimension)) != null) setDirty(); }
+    public void clearCityArrivalAltars(UUID cityId) { if (cityArrivalAltars.keySet().removeIf(key -> key.cityId().equals(cityId))) setDirty(); }
 
     public PregenerationState getPregenerationState(UUID cityId, ResourceKey<Level> dimension) { return pregenerationStates.getOrDefault(new CityDimensionKey(cityId, dimension), PregenerationState.EMPTY); }
     public long getPregeneratedChunks(UUID cityId, ResourceKey<Level> dimension) { return getPregenerationState(cityId, dimension).generatedChunks(); }
@@ -213,7 +213,7 @@ public final class CitySavedData extends SavedData {
         if (removedCity == null) throw new IllegalArgumentException("Unknown city: " + cityId);
         accessibleCityIds.remove(cityId);
         pregenerationStates.keySet().removeIf(key -> key.cityId().equals(cityId));
-        cityArrivalPositions.keySet().removeIf(key -> key.cityId().equals(cityId));
+        cityArrivalAltars.keySet().removeIf(key -> key.cityId().equals(cityId));
         Set<UUID> affectedPlayers = new LinkedHashSet<>();
         playerPositions.entrySet().removeIf(entry -> {
             SafePosition position = entry.getValue();
@@ -238,14 +238,14 @@ public final class CitySavedData extends SavedData {
         }
     }
     private Map<String, PregenerationState> serializePregenerationStates() { return serializeCityDimensionMap(pregenerationStates); }
-    private Map<String, CityArrivalPosition> serializeCityArrivalPositions() { return serializeCityDimensionMap(cityArrivalPositions); }
+    private Map<String, CityArrivalAltar> serializeCityArrivalAltars() { return serializeCityDimensionMap(cityArrivalAltars); }
     private <T> Map<String, T> serializeCityDimensionMap(Map<CityDimensionKey, T> source) {
         Map<String, T> result = new LinkedHashMap<>();
         source.forEach((key, value) -> result.put(key.cityId() + "|" + key.dimension().identifier(), value));
         return result;
     }
     private void deserializePregenerationStates(Map<String, PregenerationState> serialized) { deserializeCityDimensionMap(serialized, pregenerationStates); }
-    private void deserializeCityArrivalPositions(Map<String, CityArrivalPosition> serialized) { deserializeCityDimensionMap(serialized, cityArrivalPositions); }
+    private void deserializeCityArrivalAltars(Map<String, CityArrivalAltar> serialized) { deserializeCityDimensionMap(serialized, cityArrivalAltars); }
     private <T> void deserializeCityDimensionMap(Map<String, T> serialized, Map<CityDimensionKey, T> target) {
         for (Map.Entry<String, T> entry : serialized.entrySet()) {
             int separator = entry.getKey().indexOf('|');
@@ -267,5 +267,5 @@ public final class CitySavedData extends SavedData {
         public static final PregenerationState EMPTY = new PregenerationState(0L, false);
         public PregenerationState { if (generatedChunks < 0L) throw new IllegalArgumentException("generatedChunks must be greater than or equal to 0."); }
     }
-    public record CityArrivalPosition(int blockX, int y, int blockZ) { }
+    public record CityArrivalAltar(int blockX, int y, int blockZ) { }
 }
