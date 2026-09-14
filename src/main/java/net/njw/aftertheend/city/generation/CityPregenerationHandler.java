@@ -18,6 +18,7 @@ import net.minecraft.nbt.visitors.FieldSelector;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ChunkResult;
@@ -54,6 +55,8 @@ public final class CityPregenerationHandler {
 
     private static volatile boolean maintenanceActive;
     private static LoadSession activeSession;
+    private static DedicatedServer pauseGuardServer;
+    private static int savedPauseWhenEmptySeconds;
 
     private CityPregenerationHandler() { }
 
@@ -69,6 +72,7 @@ public final class CityPregenerationHandler {
         LoadSession session = new LoadSession(server, cities.size(), plans);
         activeSession = session;
         maintenanceActive = true;
+        enableEmptyPauseGuard(server);
         AfterTheEnd.LOGGER.info(
                 "City chunk loading scheduled: scope=all-cities, cities={}, dimensions={}, uniqueChunks={}. Player connections are temporarily disabled.",
                 cities.size(), plans.size(), session.totalChunks
@@ -87,11 +91,13 @@ public final class CityPregenerationHandler {
         if (!maintenanceActive) return;
         MinecraftServer server = event.getServer();
         if (!server.getPlayerList().getPlayers().isEmpty()) disconnectAllPlayers(server);
+        maintainEmptyPauseGuard(server);
     }
 
     @SubscribeEvent
     public static synchronized void onServerStopped(ServerStoppedEvent event) {
         if (activeSession != null) activeSession.stop();
+        restoreEmptyPauseGuard();
         resetRuntimeState();
     }
 
@@ -140,8 +146,44 @@ public final class CityPregenerationHandler {
         for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) player.connection.disconnect(LOAD_KICK_MESSAGE);
     }
 
+    private static void enableEmptyPauseGuard(MinecraftServer server) {
+        if (!(server instanceof DedicatedServer dedicatedServer)) return;
+        if (pauseGuardServer == dedicatedServer) {
+            maintainEmptyPauseGuard(server);
+            return;
+        }
+        restoreEmptyPauseGuard();
+        pauseGuardServer = dedicatedServer;
+        savedPauseWhenEmptySeconds = dedicatedServer.pauseWhenEmptySeconds();
+        if (savedPauseWhenEmptySeconds > 0) {
+            dedicatedServer.setPauseWhenEmptySeconds(0);
+            AfterTheEnd.LOGGER.info(
+                    "Temporarily disabled empty-server pausing during city chunk loading (original={}s).",
+                    savedPauseWhenEmptySeconds
+            );
+        }
+    }
+
+    private static void maintainEmptyPauseGuard(MinecraftServer server) {
+        if (!(server instanceof DedicatedServer dedicatedServer) || pauseGuardServer != dedicatedServer) return;
+        if (dedicatedServer.pauseWhenEmptySeconds() != 0) dedicatedServer.setPauseWhenEmptySeconds(0);
+    }
+
+    private static void restoreEmptyPauseGuard() {
+        DedicatedServer dedicatedServer = pauseGuardServer;
+        if (dedicatedServer == null) return;
+        int original = savedPauseWhenEmptySeconds;
+        pauseGuardServer = null;
+        savedPauseWhenEmptySeconds = 0;
+        if (original > 0 && dedicatedServer.pauseWhenEmptySeconds() != original) {
+            dedicatedServer.setPauseWhenEmptySeconds(original);
+            AfterTheEnd.LOGGER.info("Restored empty-server pause interval to {}s after city chunk loading.", original);
+        }
+    }
+
     private static synchronized void completeSession(LoadSession session) {
         if (activeSession != session) return;
+        restoreEmptyPauseGuard();
         activeSession = null;
         maintenanceActive = false;
         long elapsedMillis = (System.nanoTime() - session.startedNanos) / 1_000_000L;
@@ -165,6 +207,8 @@ public final class CityPregenerationHandler {
     private static synchronized void resetRuntimeState() {
         activeSession = null;
         maintenanceActive = false;
+        pauseGuardServer = null;
+        savedPauseWhenEmptySeconds = 0;
     }
 
     private static boolean isChunkFullyGenerated(ServerLevel level, ChunkPos chunkPos) {
