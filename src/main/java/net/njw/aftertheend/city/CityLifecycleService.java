@@ -6,7 +6,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.njw.aftertheend.AfterTheEnd;
 import net.njw.aftertheend.city.altar.AltarManager;
 import net.njw.aftertheend.city.altar.HiddenCityPreparationService;
-import net.njw.aftertheend.city.generation.CityPregenerationHandler;
 import net.njw.aftertheend.city.placement.CityPlacementService;
 import net.njw.aftertheend.network.CitySyncService;
 
@@ -90,7 +89,6 @@ public final class CityLifecycleService {
             }
         }
         HiddenCityPreparationService.removeCity(cityId);
-        CityPregenerationHandler.removeCity(cityId);
         AltarManager.removeCity(server, cityId);
         CityManager.removeCity(server, cityId);
         finishCityStateChange(server);

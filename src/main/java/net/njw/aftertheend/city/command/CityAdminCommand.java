@@ -38,9 +38,7 @@ public final class CityAdminCommand {
                                         .executes(context -> deleteCity(context.getSource(), StringArgumentType.getString(context, "cityId")))))
                         .then(Commands.literal("load")
                                 .then(Commands.literal("all")
-                                        .executes(context -> loadAllCities(context.getSource())))
-                                .then(Commands.argument("cityId", StringArgumentType.word())
-                                        .executes(context -> loadCity(context.getSource(), StringArgumentType.getString(context, "cityId")))))
+                                        .executes(context -> loadAllCities(context.getSource()))))
                         .then(Commands.literal("list").executes(context -> listCities(context.getSource())))
                         .then(Commands.literal("info")
                                 .then(Commands.argument("cityId", StringArgumentType.word())
@@ -95,42 +93,19 @@ public final class CityAdminCommand {
         }
     }
 
-    private static int loadCity(CommandSourceStack source, String cityId) {
-        UUID id = parseCityId(source, cityId);
-        if (id == null) return 0;
-        City city = CityManager.getCity(source.getServer(), id);
-        if (city == null) {
-            source.sendFailure(Component.translatable("command.njw_after_the_end.city.unknown", cityId));
-            return 0;
-        }
-        try {
-            int taskCount = CityPregenerationHandler.startCityLoad(source.getServer(), city);
-            if (taskCount == 0) {
-                source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.chunks_already_loaded", cityId), false);
-                return 1;
-            }
-            source.sendSuccess(() -> Component.translatable("command.njw_after_the_end.city.chunk_loading_started", cityId), true);
-            return 1;
-        } catch (RuntimeException exception) {
-            AfterTheEnd.LOGGER.warn("Failed to load city chunks for {} from admin command.", cityId, exception);
-            source.sendFailure(Component.translatable("command.njw_after_the_end.city.failed_load", cityId));
-            return 0;
-        }
-    }
-
     private static int loadAllCities(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
         List<City> cities = List.copyOf(CityManager.getCities(server));
         try {
-            int taskCount = CityPregenerationHandler.startAllCityLoads(server, cities);
-            if (taskCount == 0) {
+            int dimensionCount = CityPregenerationHandler.startAllCityLoads(server, cities);
+            if (dimensionCount == 0) {
                 source.sendSuccess(() -> Component.translatable(
                         "command.njw_after_the_end.city.all_chunks_already_loaded", cities.size()
                 ), false);
                 return 1;
             }
             source.sendSuccess(() -> Component.translatable(
-                    "command.njw_after_the_end.city.all_chunk_loading_started", cities.size(), taskCount
+                    "command.njw_after_the_end.city.all_chunk_loading_started", cities.size(), dimensionCount
             ), true);
             return 1;
         } catch (RuntimeException exception) {
